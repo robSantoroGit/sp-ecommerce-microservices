@@ -38,7 +38,7 @@ Production-ready e-commerce microservices system with Spring Boot, Docker, Kuber
 
 ## 📦 Microservices
 
-### User Service
+### ✅ User Service (Completed)
 Authentication, user management, and profiles.
 
 **Endpoints:**
@@ -47,6 +47,10 @@ Authentication, user management, and profiles.
 - `GET /api/users/{id}` - Get user by ID
 - `PUT /api/users/{id}` - Update user
 - `DELETE /api/users/{id}` - Delete user
+
+- **Status:** Production Ready
+- **Port:** 8081
+- **Tests:** 37/37 passing
 
 ### Product Service
 *(Coming soon)*
