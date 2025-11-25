@@ -34,10 +34,10 @@ public class User {
     @Column(nullable = false)
     private String password;
     
-    @Column(length = 100)
+    @Column(length = 100, name = "first_name")
     private String firstName;
     
-    @Column(length = 100)
+    @Column(length = 100, name="last_name")
     private String lastName;
     
     @Column(length = 20)
@@ -48,23 +48,25 @@ public class User {
     private UserRole role = UserRole.CUSTOMER;
     
     @Column(nullable = false)
-    private Boolean active = true;
+    private boolean active;
     
     @CreationTimestamp
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false, updatable = false, name="created_at")
     private LocalDateTime createdAt;
     
     @UpdateTimestamp
-    @Column(nullable = false)
+    @Column(nullable = false, name="updated_at")
     private LocalDateTime updatedAt;
     
     public User() {
+    	setActive(true);
     }
     
     public User(String username, String email, String password) {
         this.username = username;
         this.email = email;
         this.password = password;
+        setActive(true);
     }
     
     public Long getId() {
@@ -131,11 +133,11 @@ public class User {
         this.role = role;
     }
     
-    public Boolean getActive() {
+    public boolean isActive() {
         return active;
     }
     
-    public void setActive(Boolean active) {
+    public void setActive(boolean active) {
         this.active = active;
     }
     
