@@ -9,14 +9,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-import org.springframework.test.context.ContextConfiguration;
 
-import com.ecommerce.userService.bin.UserServiceApplication;
 import com.ecommerce.userService.model.User;
 import com.ecommerce.userService.model.UserRole;
 
 @DataJpaTest
-@ContextConfiguration(classes = UserServiceApplication.class) 
 public class UserRepositoryTest {
 
 	@Autowired
