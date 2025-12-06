@@ -42,6 +42,8 @@ Thumbs.db
 .env
 application-local.yml
 application-secret.yml
+# Keep example file
+!.env.example
 
 # Docker
 docker-compose.override.yml
