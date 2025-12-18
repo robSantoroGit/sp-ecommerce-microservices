@@ -2,10 +2,18 @@ package com.ecommerce.userService.service;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +25,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.ecommerce.userService.dto.UserMapper;
 import com.ecommerce.userService.dto.UserRequestDTO;
 import com.ecommerce.userService.dto.UserResponseDTO;
+import com.ecommerce.userService.exception.DuplicateResourceException;
+import com.ecommerce.userService.exception.ResourceNotFoundException;
 import com.ecommerce.userService.model.User;
 import com.ecommerce.userService.model.UserRole;
 import com.ecommerce.userService.repository.UserRepository;
@@ -87,4 +97,102 @@ class UserServiceImplTest {
         verify(userMapper).toEntity(any(UserRequestDTO.class));
         verify(userMapper).toDTO(any(User.class));
     }
+    
+    @Test
+    void testCreateUser_DuplicateUsername() {
+        // Given
+        when(userRepository.existsByUsername(anyString())).thenReturn(true);  // Username esiste!
+        
+        // When & Then
+        assertThatThrownBy(() -> userService.createUser(testRequestDTO))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("Username already exists");
+        
+        verify(userRepository).existsByUsername("testuser");
+        verify(userRepository, never()).save(any(User.class));  // save() NON deve essere chiamato
+    }
+    
+    @Test
+    void testGetUserById_NotFound() {
+        // Given
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());  // Non trovato
+        
+        // When & Then
+        assertThatThrownBy(() -> userService.getUserById(999L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("User not found with id: 999");
+        
+        verify(userRepository).findById(999L);
+        verify(userMapper, never()).toDTO(any(User.class));  // toDTO() NON chiamato
+    }
+
+    @Test
+    void testGetAllUsers() {
+        // Given
+        User user2 = new User();
+        user2.setId(2L);
+        user2.setUsername("user2");
+        
+        UserResponseDTO responseDTO2 = new UserResponseDTO();
+        responseDTO2.setId(2L);
+        responseDTO2.setUsername("user2");
+        
+        when(userRepository.findAll()).thenReturn(Arrays.asList(testUser, user2));
+        when(userMapper.toDTO(testUser)).thenReturn(testResponseDTO);
+        when(userMapper.toDTO(user2)).thenReturn(responseDTO2);
+        
+        // When
+        List<UserResponseDTO> result = userService.getAllUsers();
+        
+        // Then
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getUsername()).isEqualTo("testuser");
+        assertThat(result.get(1).getUsername()).isEqualTo("user2");
+        
+        verify(userRepository).findAll();
+        verify(userMapper, times(2)).toDTO(any(User.class));  // Chiamato 2 volte
+    }
+
+    @Test
+    void testUpdateUser_Success() {
+        // Given
+        UserRequestDTO updateDTO = new UserRequestDTO();
+        updateDTO.setUsername("testuser");
+        updateDTO.setEmail("newemail@example.com");  // 👈 Email nuova
+        updateDTO.setPassword("password12345");
+        
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(userRepository.existsByEmail(anyString())).thenReturn(false);  // Email non esiste
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+        when(userMapper.toDTO(any(User.class))).thenReturn(testResponseDTO);
+        
+        // When
+        UserResponseDTO result = userService.updateUser(1L, updateDTO);
+        
+        // Then
+        assertThat(result).isNotNull();
+        assertThat(result.getEmail()).isEqualTo(testResponseDTO.getEmail());
+        
+        verify(userRepository).findById(1L);
+        verify(userMapper).updateEntity(testUser, updateDTO);  // Verifica chiamata a updateEntity
+        verify(userRepository).save(testUser);
+    }
+    
+    @Test
+    void testDeleteUser_Success() {
+        // Given
+        when(userRepository.existsById(1L)).thenReturn(true);
+        doNothing().when(userRepository).deleteById(1L);  // doNothing() per metodi void
+        
+        // When
+        userService.deleteUser(1L);
+        
+        // Then
+        verify(userRepository).existsById(1L);
+        verify(userRepository).deleteById(1L);
+    }
+
+
+    
+
 }

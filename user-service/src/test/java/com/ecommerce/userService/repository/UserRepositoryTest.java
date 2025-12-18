@@ -9,11 +9,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.test.context.ContextConfiguration;
 
 import com.ecommerce.userService.model.User;
 import com.ecommerce.userService.model.UserRole;
 
 @DataJpaTest
+@ContextConfiguration(classes = TestConfig.class)
 public class UserRepositoryTest {
 
 	@Autowired
@@ -45,8 +47,8 @@ public class UserRepositoryTest {
         
         // Then
         assertThat(savedUser.getId()).isNotNull();
-        assertThat(savedUser.getUsername()).isEqualTo("john");
-        assertThat(savedUser.getEmail()).isEqualTo("john@test.com");
+        assertThat(savedUser.getUsername()).isEqualTo(user.getUsername());
+        assertThat(savedUser.getEmail()).isEqualTo(user.getEmail());
         assertThat(savedUser.getCreatedAt()).isNotNull();
         assertThat(savedUser.getUpdatedAt()).isNotNull();
     }
@@ -62,7 +64,7 @@ public class UserRepositoryTest {
         
         // Then
         assertThat(foundUser).isPresent();  // Optional NON è vuoto
-        assertThat(foundUser.get().getUsername()).isEqualTo("jane");
+        assertThat(foundUser.get().getUsername()).isEqualTo(savedUser.getUsername());
     }
     
     @Test
@@ -72,11 +74,11 @@ public class UserRepositoryTest {
         entityManager.persistAndFlush(user);
         
         // When
-        Optional<User> foundUser = userRepository.findByUsername("bob");
+        Optional<User> foundUser = userRepository.findByUsername(user.getUsername());
         
         // Then
         assertThat(foundUser).isPresent();
-        assertThat(foundUser.get().getEmail()).isEqualTo("bob@test.com");
+        assertThat(foundUser.get().getEmail()).isEqualTo(user.getEmail());
     }
     
     @Test
@@ -86,11 +88,11 @@ public class UserRepositoryTest {
         entityManager.persistAndFlush(user);
         
         // When
-        Optional<User> foundUser = userRepository.findByEmail("alice@test.com");
+        Optional<User> foundUser = userRepository.findByEmail(user.getEmail());
         
         // Then
         assertThat(foundUser).isPresent();
-        assertThat(foundUser.get().getUsername()).isEqualTo("alice");
+        assertThat(foundUser.get().getUsername()).isEqualTo(user.getUsername());
     }
     
     @Test
@@ -109,7 +111,7 @@ public class UserRepositoryTest {
         entityManager.persistAndFlush(user);
         
         // When
-        boolean exists = userRepository.existsByUsername("charlie");
+        boolean exists = userRepository.existsByUsername(user.getUsername());
         boolean notExists = userRepository.existsByUsername("nobody");
         
         // Then
@@ -124,7 +126,7 @@ public class UserRepositoryTest {
         entityManager.persistAndFlush(user);
         
         // When
-        boolean exists = userRepository.existsByEmail("dave@test.com");
+        boolean exists = userRepository.existsByEmail(user.getEmail());
         boolean notExists = userRepository.existsByEmail("nobody@test.com");
         
         // Then
@@ -176,8 +178,8 @@ public class UserRepositoryTest {
         entityManager.flush();
         
         // Then
-        assertThat(updatedUser.getEmail()).isEqualTo("updated@test.com");
-        assertThat(updatedUser.getFirstName()).isEqualTo("Updated");
+        assertThat(updatedUser.getEmail()).isEqualTo(savedUser.getEmail());
+        assertThat(updatedUser.getFirstName()).isEqualTo(savedUser.getFirstName());
         assertThat(updatedUser.getUpdatedAt()).isAfter(updatedUser.getCreatedAt());
     }
     
