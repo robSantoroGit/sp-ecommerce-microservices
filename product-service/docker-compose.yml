@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Product Service
+  product-db:
+    image: postgres:15-alpine
+    container_name: isolated-product-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-productdb}
+      POSTGRES_USER: ${POSTGRES_USER:-productapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-productpass}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - product-data:/var/lib/postgresql/data
+    networks:
+      - product-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-productapp} -d ${POSTGRES_DB:-productdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Product Service Application
+  product-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: isolated-product-service
+    environment:
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      
+      # Database Connection
+      SPRING_DATASOURCE_URL: jdbc:postgresql://product-db:5432/${POSTGRES_DB:-productdb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-productapp}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-productpass}
+      
+      # JVM Options
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      
+      # Logging
+      LOGGING_LEVEL_COM_ECOMMERCE: ${LOGGING_LEVEL:-INFO}
+    ports:
+      - "${APP_PORT:-8082}:8082"
+    depends_on:
+      product-db:
+        condition: service_healthy
+    networks:
+      - product-network
+    restart: unless-stopped
+
+volumes:
+  product-data:
+    name: product-service-data
+
+networks:
+  product-network:
+    name: product-service-network
+    driver: bridge

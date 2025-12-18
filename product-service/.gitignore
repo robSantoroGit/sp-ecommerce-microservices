@@ -1,15 +1,16 @@
 # ============================================
-# Maven (all services)
+# Maven
 # ============================================
-**/target/
-**/pom.xml.tag
-**/pom.xml.releaseBackup
-**/pom.xml.versionsBackup
-**/pom.xml.next
-**/release.properties
-**/dependency-reduced-pom.xml
-**/buildNumber.properties
-**/.mvn/
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
 
 # ============================================
 # IDE - IntelliJ IDEA
@@ -35,25 +36,39 @@ out/
 *.code-workspace
 
 # ============================================
+# IDE - NetBeans
+# ============================================
+nbproject/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# ============================================
 # OS Files
 # ============================================
+# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
+
+# Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Linux
 *~
 .directory
 
 # ============================================
-# Logs (all services)
+# Logs
 # ============================================
 *.log
-**/logs/
-**/log/
+logs/
+log/
 
 # ============================================
 # Temporary Files
@@ -66,26 +81,23 @@ $RECYCLE.BIN/
 *.class
 
 # ============================================
-# Spring Boot (all services)
+# Spring Boot
 # ============================================
-**/.spring-boot-devtools.properties
-**/application-local.yml
-**/application-local.properties
+.spring-boot-devtools.properties
+application-local.yml
+application-local.properties
 
 # ============================================
-# Docker
+# Docker (optional - se non vuoi committare)
 # ============================================
-**/.env.local
-**/.env.production
+# .env
 
 # ============================================
-# Docker Volumes (root level only)
+# Test Coverage Reports
 # ============================================
-postgres-data/
-user-data/
-product-data/
-order-data/
-payment-data/
+coverage/
+.coverage
+htmlcov/
 
 # ============================================
 # Package Files
@@ -104,14 +116,9 @@ payment-data/
 *.key
 *.p12
 *.jks
-**/secrets/
-
-# ============================================
-# Test Coverage Reports
-# ============================================
-**/coverage/
-**/.coverage
-**/htmlcov/
+secrets/
+.env.local
+.env.production
 
 # ============================================
 # H2 Database (test)
@@ -119,13 +126,3 @@ payment-data/
 *.db
 *.mv.db
 *.trace.db
-
-# ============================================
-# Node.js (if frontend added)
-# ============================================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-yarn.lock
