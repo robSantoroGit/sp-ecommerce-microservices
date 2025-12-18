@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for User Service
+  user-db:
+    image: postgres:15-alpine
+    container_name: isolated-user-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-userdb}
+      POSTGRES_USER: ${POSTGRES_USER:-userapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-userpass}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - user-data:/var/lib/postgresql/data
+    networks:
+      - user-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-userapp} -d ${POSTGRES_DB:-userdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # User Service Application
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: isolated-user-service
+    environment:
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      
+      # Database Connection
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/${POSTGRES_DB:-userdb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-userapp}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-userpass}
+      
+      # JVM Options
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      
+      # Logging
+      LOGGING_LEVEL_COM_ECOMMERCE: ${LOGGING_LEVEL:-INFO}
+    ports:
+      - "${APP_PORT:-8081}:8081"
+    depends_on:
+      user-db:
+        condition: service_healthy
+    networks:
+      - user-network
+    restart: unless-stopped
+
+volumes:
+  user-data:
+    name: user-service-data
+
+networks:
+  user-network:
+    name: user-service-network
+    driver: bridge
