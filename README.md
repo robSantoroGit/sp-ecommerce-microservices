@@ -143,20 +143,10 @@ Enterprise-grade microservices architecture demonstrating modern Java developmen
 - `PUT /api/categories/{id}` - Update category
 - `DELETE /api/categories/{id}` - Delete category
 
-**Current Progress:**
-- [x] Project setup with Spring Initializr
-- [x] Maven dependencies configured
-- [x] PostgreSQL database in Docker Compose
-- [x] Application configuration (application.yml)
-- [ ] Category entity
-- [ ] Product entity
-- [ ] Repositories with custom queries
-- [ ] Service layer with business logic
-- [ ] DTOs and mappers
-- [ ] Exception handling
-- [ ] REST Controllers
-- [ ] Unit & Integration tests
-- [ ] Dockerfile
+**Documentation:**
+- API Docs: http://localhost:8082/api-docs
+- Swagger UI: http://localhost:8082/swagger-ui.html
+- Health Check: http://localhost:8082/actuator/health
 
 ---
 
@@ -211,7 +201,7 @@ ecommerce-microservices/
 │   ├── Dockerfile
 │   └── README.md
 │
-├── product-service/                 🚧 (In Progress)
+├── product-service/                 ✅ (In Progress)
 │   ├── src/
 │   │   ├── main/java/com/ecommerce/productService/
 │   │   │   ├── bin/
@@ -398,8 +388,8 @@ This starts:
 
 ### Service Documentation
 - [User Service README](user-service/README.md) ✅
-- [Product Service README](product-service/README.md) 🚧
-- [Order Service README](order-service/README.md) 📋
+- [Product Service README](product-service/README.md) ✅
+- [Order Service README](order-service/README.md) 🚧
 - [Notification Service README](notification-service/README.md) 📋
 
 ## 📊 Development Status
@@ -413,13 +403,14 @@ This starts:
 - [x] User Service - Tests (37/37)
 - [x] User Service - Docker containerization
 - [x] User Service - Documentation
-
-### In Progress 🚧
 - [x] Product Service - Project setup
 - [x] Product Service - Docker database
 - [x] Product Service - Backend core
 - [x] Product Service - REST API
 - [x] Product Service - Tests
+
+
+### In Progress 🚧
 
 ### Planned 📋
 - [ ] Order Service
