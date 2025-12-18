@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # PostgreSQL - User Service
   postgres-user:
     image: postgres:15-alpine
     container_name: postgres-user
@@ -20,6 +21,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # User Service
   user-service:
     build:
       context: ../../user-service
@@ -29,7 +31,7 @@ services:
       - "${USER_SERVICE_PORT}:8081"
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${USER_DB_NAME}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-user:5432/${USER_DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
@@ -43,7 +45,7 @@ services:
       timeout: 3s
       retries: 3
       start_period: 40s
-      
+
   # PostgreSQL - Product Service
   postgres-product:
     image: postgres:15-alpine
@@ -62,7 +64,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
-      retries: 5        
+      retries: 5
 
   # Product Service
   product-service:
@@ -91,8 +93,11 @@ services:
 
 volumes:
   user-data:
+    name: ecommerce-user-data
   product-data:
+    name: ecommerce-product-data
 
 networks:
   ecommerce-network:
+    name: ecommerce-network
     driver: bridge
