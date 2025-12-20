@@ -1,0 +1,131 @@
+spring:
+  application:
+    name: order-service
+  
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5434}/${DB_NAME:orderdb}
+    username: ${DB_USER:orderuser}
+    password: ${DB_PASSWORD:orderpass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+  
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        linger.ms: 10
+        batch.size: 16384
+    
+    # Topic names
+    topics:
+      order-created: order.created
+      order-status-changed: order.status.changed
+      order-cancelled: order.cancelled
+
+server:
+  port: ${SERVER_PORT:8083}
+
+# External Services URLs
+services:
+  user-service:
+    url: ${USER_SERVICE_URL:http://localhost:8081}
+  product-service:
+    url: ${PRODUCT_SERVICE_URL:http://localhost:8082}
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# SpringDoc OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  show-actuator: false
+
+# Logging
+logging:
+  level:
+    com.ecommerce.orderservice: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"
+
+# Resilience4j Configuration
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+  
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1000
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - java.net.ConnectException
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+  
+  timeout:
+    configs:
+      default:
+        timeoutDuration: 5s
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default

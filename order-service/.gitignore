@@ -1,0 +1,128 @@
+# ============================================
+# Maven
+# ============================================
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ============================================
+# IDE - IntelliJ IDEA
+# ============================================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ============================================
+# IDE - Eclipse
+# ============================================
+.settings/
+.classpath
+.project
+.factorypath
+
+# ============================================
+# IDE - VS Code
+# ============================================
+.vscode/
+*.code-workspace
+
+# ============================================
+# IDE - NetBeans
+# ============================================
+nbproject/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# ============================================
+# OS Files
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ============================================
+# Logs
+# ============================================
+*.log
+logs/
+log/
+
+# ============================================
+# Temporary Files
+# ============================================
+*.tmp
+*.bak
+*.swp
+*.swo
+*~.nib
+*.class
+
+# ============================================
+# Spring Boot
+# ============================================
+.spring-boot-devtools.properties
+application-local.yml
+application-local.properties
+
+# ============================================
+# Docker (optional - se non vuoi committare)
+# ============================================
+# .env
+
+# ============================================
+# Test Coverage Reports
+# ============================================
+coverage/
+.coverage
+htmlcov/
+
+# ============================================
+# Package Files
+# ============================================
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ============================================
+# Security / Sensitive Data
+# ============================================
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+.env.local
+.env.production
+
+# ============================================
+# H2 Database (test)
+# ============================================
+*.db
+*.mv.db
+*.trace.db

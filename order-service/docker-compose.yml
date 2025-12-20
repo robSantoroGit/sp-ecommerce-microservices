@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Order Service
+  order-db:
+    image: postgres:15-alpine
+    container_name: isolated-order-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orderdb}
+      POSTGRES_USER: ${POSTGRES_USER:-orderuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orderpass}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - order-data:/var/lib/postgresql/data
+    networks:
+      - order-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orderuser} -d ${POSTGRES_DB:-orderdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Order Service Application
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: isolated-order-service
+    environment:
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      
+      # Database Connection
+      SPRING_DATASOURCE_URL: jdbc:postgresql://order-db:5432/${POSTGRES_DB:-orderdb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-orderuser}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-orderpass}
+      
+      # External Services (mock URLs for isolated testing)
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-http://localhost:8081}
+      PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL:-http://localhost:8082}
+      
+      # Kafka (disabled for isolated testing)
+      SPRING_KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
+      
+      # JVM Options
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx512m}
+      
+      # Logging
+      LOGGING_LEVEL_COM_ECOMMERCE: ${LOGGING_LEVEL:-INFO}
+    ports:
+      - "${APP_PORT:-8083}:8083"
+    depends_on:
+      order-db:
+        condition: service_healthy
+    networks:
+      - order-network
+    restart: unless-stopped
+
+volumes:
+  order-data:
+    name: order-service-data
+
+networks:
+  order-network:
+    name: order-service-network
+    driver: bridge
