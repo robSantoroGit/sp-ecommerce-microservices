@@ -16,12 +16,12 @@ Enterprise-grade microservices architecture demonstrating modern Java developmen
                                │
           ┌────────────────────┼────────────────────┬──────────────┐
           │                    │                    │              │
-     ┌────▼─────┐       ┌─────▼─────┐       ┌─────▼─────┐   ┌───▼────────┐
-     │   User   │       │  Product  │       │   Order   │   │Notification│
-     │  Service │       │  Service  │       │  Service  │   │  Service   │
-     │  :8081   │       │  :8082    │       │  :8083    │   │  :8084     │
-     │    ✅    │       │    ✅     │       │    🚧     │   │    📋      │
-     └────┬─────┘       └─────┬─────┘       └─────┬─────┘   └───┬────────┘
+     ┌────▼─────┐        ┌─────▼─────┐       ┌─────▼─────┐   ┌───▼────────┐
+     │   User   │        │  Product  │       │   Order   │   │Notification│
+     │  Service │        │  Service  │       │  Service  │   │  Service   │
+     │  :8081   │        │  :8082    │       │  :8083    │   │  :8084     │
+     │    ✅    │       |    ✅     │       │    ✅    │   │    📋      │
+     └────┬─────┘        └─────┬─────┘       └─────┬─────┘   └───┬────────┘
           │                    │                    │              │
           └────────────────────┼────────────────────┴──────────────┘
                                │                          │
@@ -50,7 +50,7 @@ Enterprise-grade microservices architecture demonstrating modern Java developmen
 - **Containerization:** Docker & Docker Compose
 - **Orchestration:** Kubernetes 
 - **Cloud Platform:** AWS EKS, RDS, ECR
-- **Message Broker:** Apache Kafka 3.6+
+- **Message Broker:** Apache Kafka 7.6.0 (KRaft mode, no Zookeeper)
 
 ### Development Tools
 - **Build Tool:** Maven 3.9+
@@ -58,6 +58,11 @@ Enterprise-grade microservices architecture demonstrating modern Java developmen
 - **Version Control:** Git + GitHub
 - **API Testing:** Postman
 - **Monitoring:** Actuator, Prometheus, Grafana 
+
+### Resilience & Reliability
+- **Circuit Breaker:** Resilience4j
+- **Retry Mechanism:** Resilience4j Retry
+- **REST Client:** Spring RestTemplate
 
 ### Testing
 - **Unit Testing:** JUnit 5
@@ -150,19 +155,55 @@ Enterprise-grade microservices architecture demonstrating modern Java developmen
 
 ---
 
-### 🚧 Order Service (Port 8083) - IN DEVELOPMENT
+### ✅ Order Service (Port 8083) - COMPLETED
 
-**Status:**
+**Status:** Production Ready | **Tests:** 48/48 passing
 
-**Purpose:** Order processing and management
+**Purpose:** Order processing, inventory management, event-driven order lifecycle
 
-**Features (Planned):**
-- Order creation with line items
-- Order status tracking (PENDING, CONFIRMED, SHIPPED, DELIVERED)
-- User-Order relationship
-- Product-Order relationship
-- Order total calculation
-- Order history
+**Features:**
+- Complete order lifecycle management (creation, payment, status updates, cancellation)
+- Inter-service communication with User and Product services
+- Automatic inventory management (stock validation and updates)
+- Payment processing with status transitions (PENDING → PAID → SHIPPED → DELIVERED)
+- Event-driven architecture with Kafka producers
+- Resilience patterns (Circuit Breaker, Retry) on external calls
+- Order cancellation with automatic stock restoration
+- Input validation with Jakarta Validation
+- Global exception handling
+- RESTful API with OpenAPI documentation
+
+**Tech:**
+- Spring Boot 4.0.0
+- Spring Data JPA
+- Spring Kafka (Producer)
+- Resilience4j (Circuit Breaker, Retry)
+- PostgreSQL 15 (port 5434)
+- Apache Kafka 7.6.0
+- Docker ready
+
+**Endpoints:**
+- `POST /api/orders` - Create new order
+- `GET /api/orders/{id}` - Get order by ID
+- `GET /api/orders?userId={userId}` - Get orders by user (paginated)
+- `POST /api/orders/{id}/payment` - Process payment
+- `PUT /api/orders/{id}/status` - Update order status
+- `DELETE /api/orders/{id}` - Cancel order (restores stock)
+
+**Kafka Events Published:**
+- `order.created` - When order is successfully created
+- `order.status.changed` - When order status changes
+- `order.cancelled` - When order is cancelled
+
+**External Dependencies:**
+- User Service (validates user existence)
+- Product Service (validates products, manages stock)
+- Kafka (event publishing)
+
+**Documentation:**
+- API Docs: http://localhost:8083/api-docs
+- Swagger UI: http://localhost:8083/swagger-ui.html
+- Health Check: http://localhost:8083/actuator/health
 
 ---
 
@@ -201,7 +242,7 @@ ecommerce-microservices/
 │   ├── Dockerfile
 │   └── README.md
 │
-├── product-service/                 ✅ (In Progress)
+├── product-service/                 ✅ (Completed)
 │   ├── src/
 │   │   ├── main/java/com/ecommerce/productService/
 │   │   │   ├── bin/
@@ -216,9 +257,23 @@ ecommerce-microservices/
 │   ├── Dockerfile
 │   └── README.md
 │
-├── order-service/                   📋 (Planned)
-│   └── (same structure)
-│
+├── order-service/                   ✅ (Completed)
+│   ├── src/
+│   │   ├── main/java/com/ecommerce/orderservice/
+│   │   │   ├── bin/
+│   │   │   ├── model/               Order, OrderItem, OrderStatus
+│   │   │   ├── repository/
+│   │   │   ├── service/             OrderService, KafkaProducerService
+│   │   │   ├── dto/
+│   │   │   ├── mapper/
+│   │   │   ├── client/              UserServiceClient, ProductServiceClient
+│   │   │   ├── event/               Kafka event models
+│   │   │   ├── exception/
+│   │   │   ├── controller/
+│   │   │   └── config/
+│   │   └── test/
+│   ├── Dockerfile
+│   └── README.md
 ├── notification-service/            📋 (Planned)
 │   └── (same structure)
 │
@@ -280,7 +335,7 @@ cd infrastructure/docker
 cp .env.example .env
 
 # Start PostgreSQL databases
-docker-compose up -d postgres-user postgres-product
+docker-compose up -d postgres-user postgres-product postgres-order kafka
 ```
 
 **Verify databases are healthy:**
@@ -312,6 +367,11 @@ docker-compose ps
 - Run As → Java Application
 - Verify: http://localhost:8082/actuator/health
 
+**Order Service:**
+- Right-click on `OrderServiceApplication.java`
+- Run As → Java Application
+- Verify: http://localhost:8083/actuator/health
+
 #### 5. Access Services
 
 **User Service:**
@@ -324,6 +384,11 @@ docker-compose ps
 - API Docs: http://localhost:8082/api-docs
 - Health: http://localhost:8082/actuator/health
 
+**Order Service:**
+- Swagger UI: http://localhost:8083/swagger-ui.html
+- API Docs: http://localhost:8083/api-docs
+- Health: http://localhost:8083/actuator/health
+
 ## 🧪 Testing
 
 ### Run All Tests (per service)
@@ -334,6 +399,10 @@ cd user-service
 
 # Product Service
 cd product-service
+./mvnw test
+
+# Order Service
+cd order-service
 ./mvnw test
 ```
 
@@ -346,10 +415,17 @@ cd product-service
 - **Total: 37/37 (100%)**
 
 **Product Service (Target):**
-- Repository Tests: 12 planned
-- Service Tests: 15 planned
-- Controller Tests: 15 planned
-- **Total: 42 target**
+- Repository Tests: 12/12 passing
+- Service Tests: 15/15 passing
+- Controller Tests: 15/15 passing
+- **Total: 42 target (100%)**
+
+**Order Service:**
+- Repository Tests: 8/8 passing
+- Service Tests: 20/20 passing
+- Controller Tests: 12/12 passing
+- Integration Tests: 8/8 passing
+- **Total: 48/48 (100%)**
 
 ## 🐳 Docker
 
@@ -360,6 +436,9 @@ docker build -t ecommerce-user-service:latest ./user-service
 
 # Product Service
 docker build -t ecommerce-product-service:latest ./product-service
+
+# Order Service
+docker build -t ecommerce-order-service:latest ./order-service
 ```
 
 ### Run with Docker Compose
@@ -371,8 +450,11 @@ docker-compose up -d --build
 This starts:
 - PostgreSQL for User Service (port 5432)
 - PostgreSQL for Product Service (port 5433)
+- PostgreSQL for Order Service (port 5434)
+- Apache Kafka 7.6.0 in KRaft mode (port 9092, no Zookeeper)
 - User Service container (port 8081)
 - Product Service container (port 8082)
+- Order Service container (port 8083)
 
 ## 📖 Documentation
 
@@ -389,7 +471,7 @@ This starts:
 ### Service Documentation
 - [User Service README](user-service/README.md) ✅
 - [Product Service README](product-service/README.md) ✅
-- [Order Service README](order-service/README.md) 🚧
+- [Order Service README](order-service/README.md) ✅
 - [Notification Service README](notification-service/README.md) 📋
 
 ## 📊 Development Status
@@ -408,12 +490,22 @@ This starts:
 - [x] Product Service - Backend core
 - [x] Product Service - REST API
 - [x] Product Service - Tests
+- [x] Order Service - Project setup
+- [x] Order Service - Docker database
+- [x] Order Service - Backend core (entities, repositories)
+- [x] Order Service - REST clients (User/Product services)
+- [x] Order Service - Resilience4j integration
+- [x] Order Service - Kafka producer
+- [x] Order Service - REST API (6 endpoints)
+- [x] Order Service - Tests (48/48)
+- [x] Order Service - Docker containerization
+- [x] Order Service - Documentation
+- [x] Kafka upgrade to 7.6.0 KRaft mode (removed Zookeeper)
 
 
 ### In Progress 🚧
 
 ### Planned 📋
-- [ ] Order Service
 - [ ] Notification Service
 - [ ] Kafka integration
 - [ ] API Gateway
@@ -481,7 +573,7 @@ This project demonstrates:
 ---
 
 **Project Status:** 🚧 Active Development
-**Current Focus:** Order Service 
+**Current Focus:** API Gateway & Security (JWT)
 **Last Updated:** December 2025
 
 ---
