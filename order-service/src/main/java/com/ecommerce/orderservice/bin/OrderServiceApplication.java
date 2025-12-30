@@ -6,7 +6,8 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication(scanBasePackages = {"com.ecommerce.orderservice.service","com.ecommerce.orderservice.controller",
-		"com.ecommerce.orderservice.client","com.ecommerce.orderservice.dto","com.ecommerce.orderservice.exception"})
+		"com.ecommerce.orderservice.client","com.ecommerce.orderservice.dto","com.ecommerce.orderservice.exception",
+		"com.ecommerce.orderservice.filter"})
 @EnableJpaRepositories(basePackages = "com.ecommerce.orderservice.repository")
 @EntityScan(basePackages = "com.ecommerce.orderservice.model")
 public class OrderServiceApplication {

@@ -10,8 +10,8 @@ import java.util.List;
 
 public class OrderRequestDTO {
 
-    @NotNull(message = "User ID is required")
-    private Long userId;
+    //@NotNull(message = "User ID is required")
+    //private Long userId;
 
     @NotBlank(message = "Delivery address is required")
     @Size(max = 500, message = "Delivery address must not exceed 500 characters")
@@ -25,20 +25,25 @@ public class OrderRequestDTO {
     public OrderRequestDTO() {
     }
 
-    public OrderRequestDTO(Long userId, String deliveryAddress, List<OrderItemRequestDTO> items) {
-        this.userId = userId;
-        this.deliveryAddress = deliveryAddress;
-        this.items = items;
-    }
-
-    // Getters and Setters
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
+//    public OrderRequestDTO(Long userId, String deliveryAddress, List<OrderItemRequestDTO> items) {
+//        this.userId = userId;
+//        this.deliveryAddress = deliveryAddress;
+//        this.items = items;
+//    }
+//
+//    // Getters and Setters
+//    public Long getUserId() {
+//        return userId;
+//    }
+//
+//    public void setUserId(Long userId) {
+//        this.userId = userId;
+//    }
+    
+    public OrderRequestDTO(String deliveryAddress, List<OrderItemRequestDTO> items) {
+      this.deliveryAddress = deliveryAddress;
+      this.items = items;
+  }
 
     public String getDeliveryAddress() {
         return deliveryAddress;

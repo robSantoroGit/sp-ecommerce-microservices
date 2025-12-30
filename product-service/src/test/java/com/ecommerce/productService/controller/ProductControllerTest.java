@@ -3,8 +3,11 @@ package com.ecommerce.productService.controller;
 import com.ecommerce.productService.dto.CategoryResponseDTO;
 import com.ecommerce.productService.dto.ProductRequestDTO;
 import com.ecommerce.productService.dto.ProductResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
+import com.ecommerce.productService.exception.ForbiddenException;
 import com.ecommerce.productService.exception.GlobalExceptionHandler;
 import com.ecommerce.productService.exception.ResourceNotFoundException;
+import com.ecommerce.productService.security.Permission;
 import com.ecommerce.productService.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -56,13 +59,15 @@ class ProductControllerTest {
         responseDTO.setCategory(categoryDTO);
         responseDTO.setActive(true);
         
-        when(productService.createProduct(any(ProductRequestDTO.class)))
+        when(productService.createProduct(any(ProductRequestDTO.class), any(SecurityContext.class)))
             .thenReturn(responseDTO);
         
         // When & Then
         mockMvc.perform(post("/api/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.id", is(1)))
             .andExpect(jsonPath("$.name", is("MacBook Pro")))
@@ -71,7 +76,7 @@ class ProductControllerTest {
             .andExpect(jsonPath("$.category.name", is("Electronics")))
             .andExpect(jsonPath("$.active", is(true)));
         
-        verify(productService).createProduct(any(ProductRequestDTO.class));
+        verify(productService).createProduct(any(ProductRequestDTO.class), any(SecurityContext.class));
     }
     
     @Test
@@ -84,11 +89,13 @@ class ProductControllerTest {
         // When & Then
         mockMvc.perform(post("/api/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.status", is(400)));
         
-        verify(productService, never()).createProduct(any());
+        verify(productService, never()).createProduct(any(),any());
     }
     
     @Test
@@ -98,18 +105,43 @@ class ProductControllerTest {
             "MacBook Pro", "Apple laptop", new BigDecimal("2499.99"), 10, 999L
         );
         
-        when(productService.createProduct(any(ProductRequestDTO.class)))
+        when(productService.createProduct(any(ProductRequestDTO.class), any(SecurityContext.class)))
             .thenThrow(new ResourceNotFoundException("Category not found with id: 999"));
         
         // When & Then
         mockMvc.perform(post("/api/products")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)))
             .andExpect(jsonPath("$.message", is("Category not found with id: 999")));
         
-        verify(productService).createProduct(any(ProductRequestDTO.class));
+        verify(productService).createProduct(any(ProductRequestDTO.class),any(SecurityContext.class));
+    }
+    
+    @Test
+    void createProduct_ReturnsForbidden() throws Exception {
+        // Given
+        ProductRequestDTO requestDTO = new ProductRequestDTO(
+            "MacBook Pro", "Apple laptop", new BigDecimal("2499.99"), 10, 999L
+        );
+        
+        when(productService.createProduct(any(ProductRequestDTO.class), any(SecurityContext.class)))
+            .thenThrow(new ForbiddenException("Permission denied"));
+        
+        // When & Then
+        mockMvc.perform(post("/api/products")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", ""))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.status", is(403)))
+            .andExpect(jsonPath("$.message", is("Permission denied")));
+        
+        verify(productService).createProduct(any(ProductRequestDTO.class),any(SecurityContext.class));
     }
     
     @Test
@@ -193,19 +225,21 @@ class ProductControllerTest {
         responseDTO.setPrice(new BigDecimal("2999.99"));
         responseDTO.setCategory(categoryDTO);
         
-        when(productService.updateProduct(eq(1L), any(ProductRequestDTO.class)))
+        when(productService.updateProduct(eq(1L), any(ProductRequestDTO.class), any(SecurityContext.class)))
             .thenReturn(responseDTO);
         
         // When & Then
         mockMvc.perform(put("/api/products/1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id", is(1)))
             .andExpect(jsonPath("$.name", is("MacBook Pro 16")))
             .andExpect(jsonPath("$.price", is(2999.99)));
         
-        verify(productService).updateProduct(eq(1L), any(ProductRequestDTO.class));
+        verify(productService).updateProduct(eq(1L), any(ProductRequestDTO.class), any(SecurityContext.class));
     }
     
     @Test
@@ -215,44 +249,89 @@ class ProductControllerTest {
             "MacBook", "Description", new BigDecimal("2499.99"), 10, 1L
         );
         
-        when(productService.updateProduct(eq(999L), any(ProductRequestDTO.class)))
+        when(productService.updateProduct(eq(999L), any(ProductRequestDTO.class), any(SecurityContext.class)))
             .thenThrow(new ResourceNotFoundException("Product not found with id: 999"));
         
         // When & Then
         mockMvc.perform(put("/api/products/999")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(requestDTO)))
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)))
             .andExpect(jsonPath("$.message", is("Product not found with id: 999")));
         
-        verify(productService).updateProduct(eq(999L), any(ProductRequestDTO.class));
+        verify(productService).updateProduct(eq(999L), any(ProductRequestDTO.class), any(SecurityContext.class));
+    }
+    
+    @Test
+    void updateProduct_ReturnsForbidden() throws Exception {
+        // Given
+        ProductRequestDTO requestDTO = new ProductRequestDTO(
+            "MacBook Pro", "Apple laptop", new BigDecimal("2499.99"), 10, 999L
+        );
+        
+        when(productService.updateProduct(anyLong(), any(ProductRequestDTO.class), any(SecurityContext.class)))
+            .thenThrow(new ForbiddenException("Permission denied"));
+        
+        // When & Then
+        mockMvc.perform(put("/api/products/999")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(requestDTO))
+                .header("X-User-Id", "999")
+                .header("X-User-Scopes", ""))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.status", is(403)))
+            .andExpect(jsonPath("$.message", is("Permission denied")));
+        
+        verify(productService).updateProduct(anyLong(), any(ProductRequestDTO.class), any(SecurityContext.class));
     }
     
     @Test
     void deleteProduct_ReturnsNoContent() throws Exception {
         // Given
-        doNothing().when(productService).deleteProduct(1L);
+        doNothing().when(productService).deleteProduct(eq(1L),any(SecurityContext.class));
         
         // When & Then
-        mockMvc.perform(delete("/api/products/1"))
+        mockMvc.perform(delete("/api/products/1")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_DELETE))
             .andExpect(status().isNoContent());
         
-        verify(productService).deleteProduct(1L);
+        verify(productService).deleteProduct(eq(1L),any());
     }
     
     @Test
     void deleteProduct_ReturnsNotFound() throws Exception {
         // Given
         doThrow(new ResourceNotFoundException("Product not found with id: 999"))
-            .when(productService).deleteProduct(999L);
+            .when(productService).deleteProduct(eq(999L),any(SecurityContext.class));
         
         // When & Then
-        mockMvc.perform(delete("/api/products/999"))
+        mockMvc.perform(delete("/api/products/999")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_DELETE))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)));
         
-        verify(productService).deleteProduct(999L);
+        verify(productService).deleteProduct(eq(999L),any());
+    }
+    
+    @Test
+    void deleteProduct_ReturnsForbidden() throws Exception {
+        // Given
+        doThrow(new ForbiddenException("Access denied"))
+            .when(productService).deleteProduct(eq(999L),any(SecurityContext.class));
+        
+        // When & Then
+        mockMvc.perform(delete("/api/products/999")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", ""))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.status", is(403)));
+        
+        verify(productService).deleteProduct(eq(999L),any());
     }
     
     @Test
@@ -378,29 +457,33 @@ class ProductControllerTest {
         responseDTO.setName("MacBook");
         responseDTO.setStock(25);
         
-        when(productService.updateStock(1L, 25)).thenReturn(responseDTO);
+        when(productService.updateStock(eq(1L),eq( 25), any(SecurityContext.class))).thenReturn(responseDTO);
         
         // When & Then
-        mockMvc.perform(patch("/api/products/1/stock?quantity=25"))
+        mockMvc.perform(patch("/api/products/1/stock?quantity=25")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id", is(1)))
             .andExpect(jsonPath("$.stock", is(25)));
         
-        verify(productService).updateStock(1L, 25);
+        verify(productService).updateStock(eq(1L), eq(25), any());
     }
     
     @Test
     void updateStock_ReturnsNotFound() throws Exception {
         // Given
-        when(productService.updateStock(999L, 25))
+        when(productService.updateStock(eq(999L), eq(25), any(SecurityContext.class)))
             .thenThrow(new ResourceNotFoundException("Product not found with id: 999"));
         
         // When & Then
-        mockMvc.perform(patch("/api/products/999/stock?quantity=25"))
+        mockMvc.perform(patch("/api/products/999/stock?quantity=25")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)));
         
-        verify(productService).updateStock(999L, 25);
+        verify(productService).updateStock(eq(999L), eq(25), any());
     }
     
     @Test
@@ -411,28 +494,32 @@ class ProductControllerTest {
         responseDTO.setName("MacBook");
         responseDTO.setActive(false);
         
-        when(productService.deactivateProduct(1L)).thenReturn(responseDTO);
+        when(productService.deactivateProduct(eq(1L), any(SecurityContext.class))).thenReturn(responseDTO);
         
         // When & Then
-        mockMvc.perform(patch("/api/products/1/deactivate"))
+        mockMvc.perform(patch("/api/products/1/deactivate")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id", is(1)))
             .andExpect(jsonPath("$.active", is(false)));
         
-        verify(productService).deactivateProduct(1L);
+        verify(productService).deactivateProduct(eq(1L), any());
     }
     
     @Test
     void deactivateProduct_ReturnsNotFound() throws Exception {
         // Given
-        when(productService.deactivateProduct(999L))
+        when(productService.deactivateProduct(eq(999L),any(SecurityContext.class)))
             .thenThrow(new ResourceNotFoundException("Product not found with id: 999"));
         
         // When & Then
-        mockMvc.perform(patch("/api/products/999/deactivate"))
+        mockMvc.perform(patch("/api/products/999/deactivate")
+        		.header("X-User-Id", "999")
+                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)));
         
-        verify(productService).deactivateProduct(999L);
+        verify(productService).deactivateProduct(eq(999L),any());
     }
 }

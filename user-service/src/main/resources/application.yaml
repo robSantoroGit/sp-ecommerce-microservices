@@ -40,3 +40,8 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-production}
+  expiration: ${JWT_EXPIRATION:86400000}	

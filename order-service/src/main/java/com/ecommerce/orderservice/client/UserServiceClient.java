@@ -38,27 +38,29 @@ public class UserServiceClient {
      */
     @CircuitBreaker(name = "userService", fallbackMethod = "validateUserFallback")
     @Retry(name = "userService")
-    public UserDTO validateUser(Long userId) {
+    public UserDTO validateUser(Long authenticatedUserId, String scopes) {
         try {
-            logger.debug("Calling User Service to validate user: {}", userId);
+            logger.debug("Calling User Service to validate user: {}", authenticatedUserId);
             
             UserDTO user = restClient.get()
-                    .uri("/api/users/{id}", userId)
+                    .uri("/api/users/{id}", authenticatedUserId)
+                    .header("X-User-Id", authenticatedUserId.toString())
+                    .header("X-User-Scopes", scopes)
                     .retrieve()
                     .body(UserDTO.class);
 
             if (user == null) {
-                throw new UserNotFoundException(userId);
+                throw new UserNotFoundException(authenticatedUserId);
             }
 
-            logger.debug("User validated successfully: {}", userId);
+            logger.debug("User validated successfully: {}", authenticatedUserId);
             return user;
 
         } catch (HttpClientErrorException.NotFound e) {
-            logger.error("User not found: {}", userId);
-            throw new UserNotFoundException(userId);
+            logger.error("User not found: {}", authenticatedUserId);
+            throw new UserNotFoundException(authenticatedUserId);
         } catch (Exception e) {
-            logger.error("Error calling User Service for userId: {}", userId, e);
+            logger.error("Error calling User Service for userId: {}", authenticatedUserId, e);
             throw new ExternalServiceException("User Service", e);
         }
     }
@@ -66,7 +68,7 @@ public class UserServiceClient {
     /**
      * Fallback method when User Service is unavailable
      */
-    private UserDTO validateUserFallback(Long userId, Throwable throwable) {
+    private UserDTO validateUserFallback(Long userId, String scopes, Throwable throwable) {
         logger.error("User Service unavailable. Using fallback for userId: {}. Error: {}", 
                 userId, throwable.getMessage());
         

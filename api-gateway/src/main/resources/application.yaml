@@ -1,0 +1,165 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}	
+
+  cloud:
+     gateway:
+      redis-rate-limiter:
+        enabled: true
+        
+      server:
+        webflux:
+          routes:
+            # Auth Routes (PUBBLICHE - prima di tutto)
+            - id: auth-service
+              uri: ${USER_SERVICE_URL:http://auth-service:8081}
+              predicates:
+                - Path=/api/auth/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    key-resolver: "#{@userKeyResolver}"
+                - name: CircuitBreaker
+                  args:
+                    name: userService
+                    fallbackUri: forward:/fallback/user-service
+
+            # User Service Routes
+            - id: user-service
+              uri: ${USER_SERVICE_URL:http://user-service:8081}
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    key-resolver: "#{@userKeyResolver}"
+                - name: CircuitBreaker
+                  args:
+                    name: userService
+                    fallbackUri: forward:/fallback/user-service
+            
+            # Product Service Routes
+            - id: product-service
+              uri: ${PRODUCT_SERVICE_URL:http://product-service:8082}
+              predicates:
+                - Path=/api/products/**, /api/categories/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    key-resolver: "#{@userKeyResolver}"
+                - name: CircuitBreaker
+                  args:
+                    name: productService
+                    fallbackUri: forward:/fallback/product-service
+            
+            # Order Service Routes
+            - id: order-service
+              uri: ${ORDER_SERVICE_URL:http://order-service:8083}
+              predicates:
+                - Path=/api/orders/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    key-resolver: "#{@userKeyResolver}"
+                - name: CircuitBreaker
+                  args:
+                    name: orderService
+                    fallbackUri: forward:/fallback/order-service
+        
+        # Global CORS configuration
+        globalcors:
+          corsConfigurations:
+            '[/**]':
+              allowedOrigins: ${CORS_ALLOWED_ORIGINS:*}
+              allowedMethods:
+                - GET
+                - POST
+                - PUT
+                - DELETE
+                - PATCH
+              allowedHeaders: "*"
+              allowCredentials: false
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+
+# Logging
+logging:
+  level:
+    org.springframework.cloud.gateway: ${LOG_LEVEL_GATEWAY:DEBUG}
+    com.ecommerce.apigateway: ${LOG_LEVEL_APP:DEBUG}
+    org.springframework.boot.context.config: DEBUG
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:your-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-production}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+ # Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        minimumNumberOfCalls: 5
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+      orderService:
+        baseConfig: default
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+      orderService:
+        baseConfig: default
+  
+  timeout:
+    configs:
+      default:
+        timeoutDuration: 10s
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+      orderService:
+        baseConfig: default

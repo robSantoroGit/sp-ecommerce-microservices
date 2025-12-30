@@ -16,8 +16,10 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -30,6 +32,7 @@ import com.ecommerce.productService.dto.ProductRequestDTO;
 import com.ecommerce.productService.dto.ProductResponseDTO;
 import com.ecommerce.productService.repository.CategoryRepository;
 import com.ecommerce.productService.repository.ProductRepository;
+import com.ecommerce.productService.security.Permission;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, classes = ProductServiceApplication.class)
 @TestPropertySource(locations = "classpath:application-test.yml")
@@ -61,6 +64,15 @@ class ProductServiceIntegrationTest {
         categoryRepository.deleteAll();
     }
     
+    // Crea HttpHeaders helper nel setUp()
+    private HttpHeaders createHeaders(Long userId, String scopes) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-User-Id", userId.toString());
+        headers.set("X-User-Scopes", scopes);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
+    
     @Test
     void verifyGlobalExceptionHandlerIsLoaded() {
         // Verify GlobalExceptionHandler bean exists
@@ -75,9 +87,13 @@ class ProductServiceIntegrationTest {
         // 1. CREATE Category
         CategoryRequestDTO createRequest = new CategoryRequestDTO("Electronics", "Electronic devices");
         
+        HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<CategoryRequestDTO> categoryRequest = new HttpEntity<CategoryRequestDTO>(createRequest,categoryHeaders);
+
+        
         ResponseEntity<CategoryResponseDTO> createResponse = restTemplate.postForEntity(
             "/api/categories",
-            createRequest,
+            categoryRequest,
             CategoryResponseDTO.class
         );
         
@@ -88,8 +104,13 @@ class ProductServiceIntegrationTest {
         Long categoryId = createResponse.getBody().getId();
         
         // 2. GET Category by ID
-        ResponseEntity<CategoryResponseDTO> getResponse = restTemplate.getForEntity(
+        HttpHeaders categoryHeaders2 = createHeaders(999L,Permission.PRODUCT_READ);
+        HttpEntity<Void> categoryRequest1 = new HttpEntity<Void>(categoryHeaders2);
+        
+        ResponseEntity<CategoryResponseDTO> getResponse = restTemplate.exchange(
             "/api/categories/" + categoryId,
+            HttpMethod.GET,
+            categoryRequest1,
             CategoryResponseDTO.class
         );
         
@@ -98,11 +119,12 @@ class ProductServiceIntegrationTest {
         
         // 3. UPDATE Category
         CategoryRequestDTO updateRequest = new CategoryRequestDTO("Electronics Updated", "New description");
+        HttpEntity<CategoryRequestDTO> categoryUpdateRequest = new HttpEntity<CategoryRequestDTO>(updateRequest,categoryHeaders);
         
         ResponseEntity<CategoryResponseDTO> updateResponse = restTemplate.exchange(
             "/api/categories/" + categoryId,
             HttpMethod.PUT,
-            new HttpEntity<>(updateRequest),
+            categoryUpdateRequest,
             CategoryResponseDTO.class
         );
         
@@ -111,10 +133,13 @@ class ProductServiceIntegrationTest {
         assertThat(updateResponse.getBody().getDescription()).isEqualTo("New description");
         
         // 4. DELETE Category
+        HttpHeaders categoryDeleteHeaders = createHeaders(999L,Permission.PRODUCT_DELETE);
+        HttpEntity<Void> categoryDeleteRequest = new HttpEntity<Void>(categoryDeleteHeaders);
+        
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
             "/api/categories/" + categoryId,
             HttpMethod.DELETE,
-            null,
+            categoryDeleteRequest,
             Void.class
         );
         
@@ -124,8 +149,10 @@ class ProductServiceIntegrationTest {
         // Debug: verify deletion
         System.out.println("Category exists in DB after DELETE: " + categoryRepository.existsById(categoryId));
         // 5. Verify deletion - GET should return 404
-        ResponseEntity<ErrorResponse> notFoundResponse = restTemplate.getForEntity(
+        ResponseEntity<ErrorResponse> notFoundResponse = restTemplate.exchange(
             "/api/categories/" + categoryId,
+            HttpMethod.GET,
+            categoryRequest1,
             ErrorResponse.class
         );
         
@@ -136,12 +163,14 @@ class ProductServiceIntegrationTest {
     void createCategory_DuplicateName_ReturnsConflict() {
         // 1. Create first category
         CategoryRequestDTO request = new CategoryRequestDTO("Electronics", "Devices");
-        restTemplate.postForEntity("/api/categories", request, CategoryResponseDTO.class);
+        HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<CategoryRequestDTO> categoryRequest = new HttpEntity<CategoryRequestDTO>(request,categoryHeaders);
+        restTemplate.postForEntity("/api/categories", categoryRequest, CategoryResponseDTO.class);
         
         // 2. Try to create duplicate
         ResponseEntity<ErrorResponse> response = restTemplate.postForEntity(
             "/api/categories",
-            request,
+            categoryRequest,
             ErrorResponse.class
         );
         
@@ -154,23 +183,30 @@ class ProductServiceIntegrationTest {
     @Test
     void getAllCategories_ReturnsMultipleCategories() {
         // 1. Create multiple categories
+    	HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<CategoryRequestDTO> categoryRequest1 = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Electronics", "Devices"),categoryHeaders);
         restTemplate.postForEntity("/api/categories",
-            new CategoryRequestDTO("Electronics", "Devices"),
+            categoryRequest1,
             CategoryResponseDTO.class);
         
+        HttpEntity<CategoryRequestDTO> categoryRequest2 = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Books", "Publications"),categoryHeaders);
         restTemplate.postForEntity("/api/categories",
-            new CategoryRequestDTO("Books", "Publications"),
+            categoryRequest2,
             CategoryResponseDTO.class);
         
+        HttpEntity<CategoryRequestDTO> categoryRequest3 = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Clothing", "Fashion"),categoryHeaders);
         restTemplate.postForEntity("/api/categories",
-            new CategoryRequestDTO("Clothing", "Fashion"),
+            categoryRequest3,
             CategoryResponseDTO.class);
         
         // 2. GET all categories
+        HttpHeaders categoryHeaders2 = createHeaders(999L,Permission.PRODUCT_READ);
+        HttpEntity<Void> categoryRequest4 = new HttpEntity<Void>(categoryHeaders2);
+        
         ResponseEntity<List<CategoryResponseDTO>> response = restTemplate.exchange(
             "/api/categories",
             HttpMethod.GET,
-            null,
+            categoryRequest4,
             new ParameterizedTypeReference<List<CategoryResponseDTO>>() {}
         );
         
@@ -185,9 +221,12 @@ class ProductServiceIntegrationTest {
     void fullProductCRUD_WorksEndToEnd() {
         // 1. Create Category first
         CategoryRequestDTO categoryRequest = new CategoryRequestDTO("Electronics", "Devices");
+        HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<CategoryRequestDTO> categoryRequest1 = new HttpEntity<CategoryRequestDTO>(categoryRequest,categoryHeaders);
+        
         ResponseEntity<CategoryResponseDTO> categoryResponse = restTemplate.postForEntity(
             "/api/categories",
-            categoryRequest,
+            categoryRequest1,
             CategoryResponseDTO.class
         );
         Long categoryId = categoryResponse.getBody().getId();
@@ -200,10 +239,12 @@ class ProductServiceIntegrationTest {
             10,
             categoryId
         );
+        HttpHeaders productHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<ProductRequestDTO> productRequest1 = new HttpEntity<ProductRequestDTO>(createRequest,productHeaders);
         
         ResponseEntity<ProductResponseDTO> createResponse = restTemplate.postForEntity(
             "/api/products",
-            createRequest,
+            productRequest1,
             ProductResponseDTO.class
         );
         
@@ -215,8 +256,13 @@ class ProductServiceIntegrationTest {
         Long productId = createResponse.getBody().getId();
         
         // 3. GET Product by ID
-        ResponseEntity<ProductResponseDTO> getResponse = restTemplate.getForEntity(
+        HttpHeaders productHeaders2 = createHeaders(999L,Permission.PRODUCT_READ);
+        HttpEntity<Void> productGetRequest = new HttpEntity<Void>(productHeaders2);
+        
+        ResponseEntity<ProductResponseDTO> getResponse = restTemplate.exchange(
             "/api/products/" + productId,
+            HttpMethod.GET,
+            productGetRequest,
             ProductResponseDTO.class
         );
         
@@ -232,10 +278,12 @@ class ProductServiceIntegrationTest {
             categoryId
         );
         
+        HttpEntity<ProductRequestDTO> productUpdateRequest = new HttpEntity<ProductRequestDTO>(updateRequest,productHeaders);
+        
         ResponseEntity<ProductResponseDTO> updateResponse = restTemplate.exchange(
             "/api/products/" + productId,
             HttpMethod.PUT,
-            new HttpEntity<>(updateRequest),
+            productUpdateRequest,
             ProductResponseDTO.class
         );
         
@@ -244,10 +292,13 @@ class ProductServiceIntegrationTest {
         assertThat(updateResponse.getBody().getPrice()).isEqualByComparingTo(new BigDecimal("2999.99"));
         
         // 5. DELETE Product
+        HttpHeaders productDeleteHeaders = createHeaders(999L,Permission.PRODUCT_DELETE);
+        HttpEntity<Void> productDeleteRequest = new HttpEntity<Void>(productDeleteHeaders);
+        
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
             "/api/products/" + productId,
             HttpMethod.DELETE,
-            null,
+            productDeleteRequest,
             Void.class
         );
         
@@ -265,9 +316,12 @@ class ProductServiceIntegrationTest {
             999L  // Non-existent category
         );
         
+        HttpHeaders productHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<ProductRequestDTO> productRequest1 = new HttpEntity<ProductRequestDTO>(request,productHeaders);
+        
         ResponseEntity<ErrorResponse> response = restTemplate.postForEntity(
             "/api/products",
-            request,
+            productRequest1,
             ErrorResponse.class
         );
         
@@ -279,38 +333,53 @@ class ProductServiceIntegrationTest {
     @Test
     void getProductsByCategory_ReturnsFilteredProducts() {
         // 1. Create categories
-        ResponseEntity<CategoryResponseDTO> electronicsResponse = restTemplate.postForEntity(
+    	HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+    	HttpEntity<CategoryRequestDTO> categoryRequest = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Electronics", "Devices"),categoryHeaders);
+    	
+    	ResponseEntity<CategoryResponseDTO> electronicsResponse = restTemplate.postForEntity(
             "/api/categories",
-            new CategoryRequestDTO("Electronics", "Devices"),
+            categoryRequest,
             CategoryResponseDTO.class
         );
         Long electronicsId = electronicsResponse.getBody().getId();
         
+        HttpEntity<CategoryRequestDTO> categoryRequest2 = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Books", "Publications"),categoryHeaders);
         ResponseEntity<CategoryResponseDTO> booksResponse = restTemplate.postForEntity(
             "/api/categories",
-            new CategoryRequestDTO("Books", "Publications"),
+            categoryRequest2,
             CategoryResponseDTO.class
         );
         Long booksId = booksResponse.getBody().getId();
         
         // 2. Create products in different categories
+        HttpHeaders productHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<ProductRequestDTO> productRequest1 = 
+        		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("MacBook", "Laptop", new BigDecimal("2499.99"), 10, electronicsId),productHeaders);
+    	
         restTemplate.postForEntity("/api/products",
-            new ProductRequestDTO("MacBook", "Laptop", new BigDecimal("2499.99"), 10, electronicsId),
+            productRequest1,
             ProductResponseDTO.class);
         
+        HttpEntity<ProductRequestDTO> productRequest2 = 
+        		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("iPhone", "Phone", new BigDecimal("1199.99"), 20, electronicsId),productHeaders);
         restTemplate.postForEntity("/api/products",
-            new ProductRequestDTO("iPhone", "Phone", new BigDecimal("1199.99"), 20, electronicsId),
+            productRequest2,
             ProductResponseDTO.class);
         
+        HttpEntity<ProductRequestDTO> productRequest3 = 
+        		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("Clean Code", "Book", new BigDecimal("45.99"), 100, booksId),productHeaders);
         restTemplate.postForEntity("/api/products",
-            new ProductRequestDTO("Clean Code", "Book", new BigDecimal("45.99"), 100, booksId),
+            productRequest3,
             ProductResponseDTO.class);
         
         // 3. GET products by Electronics category
+        HttpHeaders productGetHeaders = createHeaders(999L,Permission.PRODUCT_READ);
+        HttpEntity<Void> productGetRequest = new HttpEntity<Void>(productGetHeaders);
+        
         ResponseEntity<List<ProductResponseDTO>> response = restTemplate.exchange(
             "/api/products/category/" + electronicsId,
             HttpMethod.GET,
-            null,
+            productGetRequest,
             new ParameterizedTypeReference<List<ProductResponseDTO>>() {}
         );
         
@@ -324,31 +393,45 @@ class ProductServiceIntegrationTest {
     @Test
     void searchProducts_ReturnsMatchingProducts() {
         // 1. Create category
-        ResponseEntity<CategoryResponseDTO> categoryResponse = restTemplate.postForEntity(
+    	HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+    	HttpEntity<CategoryRequestDTO> categoryRequest = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Electronics", "Devices"),categoryHeaders);
+    	
+    	ResponseEntity<CategoryResponseDTO> categoryResponse = restTemplate.postForEntity(
             "/api/categories",
-            new CategoryRequestDTO("Electronics", "Devices"),
+            categoryRequest,
             CategoryResponseDTO.class
         );
         Long categoryId = categoryResponse.getBody().getId();
         
         // 2. Create products
-        restTemplate.postForEntity("/api/products",
-            new ProductRequestDTO("Magic Mouse", "Wireless mouse", new BigDecimal("79.99"), 50, categoryId),
-            ProductResponseDTO.class);
+        HttpHeaders productHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<ProductRequestDTO> productRequest1 = 
+       		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("Magic Mouse", "Wireless mouse", new BigDecimal("79.99"), 50, categoryId),productHeaders);
         
         restTemplate.postForEntity("/api/products",
-            new ProductRequestDTO("Magic Keyboard", "Wireless keyboard", new BigDecimal("149.99"), 30, categoryId),
+            productRequest1,
             ProductResponseDTO.class);
         
+        HttpEntity<ProductRequestDTO> productRequest2 = 
+       		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("Magic Keyboard", "Wireless keyboard", new BigDecimal("149.99"), 30, categoryId),productHeaders);
         restTemplate.postForEntity("/api/products",
-            new ProductRequestDTO("MacBook Pro", "Laptop", new BigDecimal("2499.99"), 10, categoryId),
+            productRequest2,
             ProductResponseDTO.class);
+        
+        HttpEntity<ProductRequestDTO> productRequest3 = 
+       		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("Other Keyboard", "Wireless keyboard", new BigDecimal("149.99"), 30, categoryId),productHeaders); 
+        restTemplate.postForEntity("/api/products",
+        	productRequest3,
+        	ProductResponseDTO.class);
         
         // 3. Search for "magic"
+        HttpHeaders productGetHeaders = createHeaders(999L,Permission.PRODUCT_READ);
+        HttpEntity<Void> productGetRequest = new HttpEntity<Void>(productGetHeaders);
+        
         ResponseEntity<List<ProductResponseDTO>> response = restTemplate.exchange(
             "/api/products/search?keyword=magic",
             HttpMethod.GET,
-            null,
+            productGetRequest,
             new ParameterizedTypeReference<List<ProductResponseDTO>>() {}
         );
         
@@ -362,25 +445,33 @@ class ProductServiceIntegrationTest {
     @Test
     void updateStock_AndDeactivate_Workflow() {
         // 1. Create category and product
-        ResponseEntity<CategoryResponseDTO> categoryResponse = restTemplate.postForEntity(
+    	HttpHeaders categoryHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+    	HttpEntity<CategoryRequestDTO> categoryRequest = new HttpEntity<CategoryRequestDTO>(new CategoryRequestDTO("Electronics", "Devices"),categoryHeaders);
+    	    	
+    	ResponseEntity<CategoryResponseDTO> categoryResponse = restTemplate.postForEntity(
             "/api/categories",
-            new CategoryRequestDTO("Electronics", "Devices"),
+            categoryRequest,
             CategoryResponseDTO.class
         );
         Long categoryId = categoryResponse.getBody().getId();
         
+        HttpHeaders productHeaders = createHeaders(999L,Permission.PRODUCT_WRITE);
+        HttpEntity<ProductRequestDTO> productRequest1 = 
+       		new HttpEntity<ProductRequestDTO>(new ProductRequestDTO("MacBook", "Laptop", new BigDecimal("2499.99"), 10, categoryId),productHeaders);
+        
         ResponseEntity<ProductResponseDTO> productResponse = restTemplate.postForEntity(
             "/api/products",
-            new ProductRequestDTO("MacBook", "Laptop", new BigDecimal("2499.99"), 10, categoryId),
+            productRequest1,
             ProductResponseDTO.class
         );
         Long productId = productResponse.getBody().getId();
         
         // 2. Update stock
+        HttpEntity<Void> productUpdateRequest = new HttpEntity<Void>(productHeaders);
         ResponseEntity<ProductResponseDTO> stockUpdateResponse = restTemplate.exchange(
             "/api/products/" + productId + "/stock?quantity=25",
             HttpMethod.PATCH,
-            null,
+            productUpdateRequest,
             ProductResponseDTO.class
         );
         
@@ -388,10 +479,11 @@ class ProductServiceIntegrationTest {
         assertThat(stockUpdateResponse.getBody().getStock()).isEqualTo(25);
         
         // 3. Deactivate product
+        HttpEntity<Void> productUpdateRequest2 = new HttpEntity<Void>(productHeaders);
         ResponseEntity<ProductResponseDTO> deactivateResponse = restTemplate.exchange(
             "/api/products/" + productId + "/deactivate",
             HttpMethod.PATCH,
-            null,
+            productUpdateRequest2,
             ProductResponseDTO.class
         );
         
@@ -399,8 +491,13 @@ class ProductServiceIntegrationTest {
         assertThat(deactivateResponse.getBody().isActive()).isFalse();
         
         // 4. Verify GET still works
-        ResponseEntity<ProductResponseDTO> getResponse = restTemplate.getForEntity(
+        HttpHeaders productGetHeaders = createHeaders(999L,Permission.PRODUCT_READ);
+        HttpEntity<Void> productGetRequest = new HttpEntity<Void>(productGetHeaders);
+        
+        ResponseEntity<ProductResponseDTO> getResponse = restTemplate.exchange(
             "/api/products/" + productId,
+            HttpMethod.GET,
+            productGetRequest,
             ProductResponseDTO.class
         );
         

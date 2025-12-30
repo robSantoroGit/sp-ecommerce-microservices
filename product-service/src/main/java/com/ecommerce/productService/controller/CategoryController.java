@@ -1,7 +1,10 @@
 package com.ecommerce.productService.controller;
 
+import java.util.Arrays;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -10,11 +13,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ecommerce.productService.dto.CategoryRequestDTO;
 import com.ecommerce.productService.dto.CategoryResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
 import com.ecommerce.productService.service.CategoryService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,9 +36,15 @@ import jakarta.validation.Valid;
 public class CategoryController {
 
 	private final CategoryService categoryService;
+	private static final Logger log = LoggerFactory.getLogger(ProductController.class);
 
 	public CategoryController(CategoryService categoryService) {
 		this.categoryService = categoryService;
+	}
+	
+	private SecurityContext createSecurityContext(Long userId, String scopesHeader) {
+	    List<String> scopes = Arrays.asList(scopesHeader.split(","));
+	    return new SecurityContext(userId, "user-" + userId, scopes);
 	}
 
 	/**
@@ -60,9 +71,12 @@ public class CategoryController {
 					)
 	})
 	@PostMapping
-	public ResponseEntity<CategoryResponseDTO> createCategory(@Valid @RequestBody CategoryRequestDTO dto) {
-
-		CategoryResponseDTO created = categoryService.createCategory(dto);
+	public ResponseEntity<CategoryResponseDTO> createCategory(@Valid @RequestBody CategoryRequestDTO dto,
+			@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+		log.info("POST /api/categories - Create category attempt");
+		SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+		CategoryResponseDTO created = categoryService.createCategory(dto,securityContext);
 		return ResponseEntity.status(HttpStatus.CREATED).body(created);
 	}
 
@@ -82,6 +96,7 @@ public class CategoryController {
 	})
 	@GetMapping
 	public ResponseEntity<List<CategoryResponseDTO>> getAllCategories() {
+		log.info("GET /api/categories - Get all categories");
 		List<CategoryResponseDTO> categories = categoryService.getAllCategories();
 		return ResponseEntity.ok(categories);
 	}
@@ -107,6 +122,7 @@ public class CategoryController {
 	    })
 	@GetMapping("/{id}")
 	public ResponseEntity<CategoryResponseDTO> getCategoryById(@PathVariable Long id) {
+		log.info("GET /api/categories/{} - Get category by id",id);
 		CategoryResponseDTO category = categoryService.getCategoryById(id);
 		return ResponseEntity.ok(category);
 	}
@@ -139,9 +155,13 @@ public class CategoryController {
 	        )
 	    })
 	@PutMapping("/{id}")
-	public ResponseEntity<CategoryResponseDTO> updateCategory(@PathVariable Long id,@Valid @RequestBody CategoryRequestDTO dto) {
-
-		CategoryResponseDTO updated = categoryService.updateCategory(id, dto);
+	public ResponseEntity<CategoryResponseDTO> updateCategory(@PathVariable Long id,
+			@Valid @RequestBody CategoryRequestDTO dto,
+			@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+		log.info("PUT /api/categories/{} - Update category with id",id);
+		SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+		CategoryResponseDTO updated = categoryService.updateCategory(id, dto, securityContext);
 		return ResponseEntity.ok(updated);
 	}
 
@@ -164,8 +184,12 @@ public class CategoryController {
 		        )
 		    })
 	@DeleteMapping("/{id}")
-	public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
-		categoryService.deleteCategory(id);
+	public ResponseEntity<Void> deleteCategory(@PathVariable Long id,
+			@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+		 log.info("DELETE /api/categories/{} - Delete category by id",id);
+		 SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+		 categoryService.deleteCategory(id,securityContext);
 		return ResponseEntity.noContent().build();
 	}
 }

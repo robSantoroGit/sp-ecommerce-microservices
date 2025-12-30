@@ -1,0 +1,57 @@
+# Kubernetes-specific configuration for User Service
+# Activated with SPRING_PROFILES_ACTIVE=kubernetes
+# All environment-specific values come from ConfigMap/Secret
+
+spring:
+  application:
+    name: ${SPRING_APPLICATION_NAME:user-service}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  sql:
+    init:
+      mode: ${SPRING_SQL_INIT_MODE:never}
+
+server:
+  port: ${SERVER_PORT:8081}
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${MANAGEMENT_ENDPOINTS_INCLUDE:health,info,metrics,prometheus}
+  endpoint:
+    health:
+      show-details: ${MANAGEMENT_HEALTH_SHOW_DETAILS:always}
+    probes:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: ${MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED:true}	  
+
+# OpenAPI/Swagger
+springdoc:
+  api-docs:
+    path: ${SPRINGDOC_API_DOCS_PATH:/api-docs}
+  swagger-ui:
+    path: ${SPRINGDOC_SWAGGER_UI_PATH:/swagger-ui.html}
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}

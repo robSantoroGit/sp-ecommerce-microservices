@@ -1,19 +1,25 @@
 package com.ecommerce.productService.service;
 
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.ecommerce.productService.dto.ProductMapper;
 import com.ecommerce.productService.dto.ProductRequestDTO;
 import com.ecommerce.productService.dto.ProductResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
+import com.ecommerce.productService.exception.ForbiddenException;
 import com.ecommerce.productService.exception.ResourceNotFoundException;
 import com.ecommerce.productService.model.Category;
 import com.ecommerce.productService.model.Product;
 import com.ecommerce.productService.repository.CategoryRepository;
 import com.ecommerce.productService.repository.ProductRepository;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.stream.Collectors;
+import com.ecommerce.productService.security.Permission;
 
 @Service
 @Transactional
@@ -23,6 +29,8 @@ public class ProductServiceImpl implements ProductService {
     private final CategoryRepository categoryRepository;
     private final ProductMapper productMapper;
     
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
+    
     public ProductServiceImpl(ProductRepository productRepository,CategoryRepository categoryRepository,ProductMapper productMapper) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
@@ -30,8 +38,13 @@ public class ProductServiceImpl implements ProductService {
     }
     
     @Override
-    public ProductResponseDTO createProduct(ProductRequestDTO dto) {
-        // Load and verify category exists
+    public ProductResponseDTO createProduct(ProductRequestDTO dto, SecurityContext securityContext) {
+    	log.info("Creating new product with name: {}", dto.getName());
+    	if (!securityContext.hasPermission(Permission.PRODUCT_WRITE)) {
+    		log.warn("Access denied: user without permission {} tried to create product", securityContext.getUserId());
+    		throw new ForbiddenException("Permission denied: product.write required");
+    	}
+    	// Load and verify category exists
         Category category = categoryRepository.findById(dto.getCategoryId())
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Category not found with id: " + dto.getCategoryId()
@@ -43,6 +56,8 @@ public class ProductServiceImpl implements ProductService {
         // Save entity
         Product saved = productRepository.save(product);
         
+        log.info("Product created successfully: {}", saved.getId());
+        
         // Convert entity to response DTO
         return productMapper.toResponseDTO(saved);
     }
@@ -50,7 +65,8 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponseDTO> getAllProducts() {
-        return productRepository.findAll()
+    	log.info("Fetching all products");
+    	return productRepository.findAll()
             .stream()
             .map(productMapper::toResponseDTO)
             .toList();
@@ -59,7 +75,8 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public ProductResponseDTO getProductById(Long id) {
-        Product product = productRepository.findById(id)
+    	log.info("Fetching product with id: {}", id);
+    	Product product = productRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Product not found with id: " + id
             ));
@@ -68,8 +85,13 @@ public class ProductServiceImpl implements ProductService {
     }
     
     @Override
-    public ProductResponseDTO updateProduct(Long id, ProductRequestDTO dto) {
-        // Find existing product
+    public ProductResponseDTO updateProduct(Long id, ProductRequestDTO dto,SecurityContext securityContext) {
+    	log.info("Updating product with id: {}", id);
+    	if (!securityContext.hasPermission(Permission.PRODUCT_WRITE)) {
+    		log.warn("Access denied: User {} tried to update product {}", securityContext.getUserId(), id);
+    		throw new ForbiddenException("Permission denied: product.write required");
+    	}
+    	// Find existing product
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Product not found with id: " + id
@@ -87,13 +109,20 @@ public class ProductServiceImpl implements ProductService {
         // Save updated entity
         Product updated = productRepository.save(product);
         
+        log.info("Product updated successfully: {}", updated.getId());
+        
         // Convert to response DTO
         return productMapper.toResponseDTO(updated);
     }
     
     @Override
-    public void deleteProduct(Long id) {
-        // Check if product exists
+    public void deleteProduct(Long id, SecurityContext securityContext) {
+    	log.info("Deleting product with id: {}", id);
+    	if (!securityContext.hasPermission(Permission.PRODUCT_DELETE)) {
+    		log.warn("Access denied: user {} tried to delete product", securityContext.getUserId());
+    	    throw new ForbiddenException("Permission denied: product.write required");
+    	}
+    	// Check if product exists
         if (!productRepository.existsById(id)) {
             throw new ResourceNotFoundException(
                 "Product not found with id: " + id
@@ -102,12 +131,14 @@ public class ProductServiceImpl implements ProductService {
         
         // Delete product
         productRepository.deleteById(id);
+        log.info("Product deleted successfully: {}", id);
     }
     
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponseDTO> getProductsByCategory(Long categoryId) {
-        // Verify category exists
+    	log.info("Fetching product with category id: {}", categoryId);
+    	// Verify category exists
         Category category = categoryRepository.findById(categoryId)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Category not found with id: " + categoryId
@@ -123,7 +154,8 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponseDTO> searchProducts(String keyword) {
-        // Search by name (case-insensitive, with @EntityGraph)
+    	log.info("Fetching products with keyword: {}", keyword);
+    	// Search by name (case-insensitive, with @EntityGraph)
         return productRepository.findByNameContainingIgnoreCase(keyword)
             .stream()
             .map(productMapper::toResponseDTO)
@@ -133,7 +165,8 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponseDTO> getProductsByPriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
-        // Find products in price range (with @EntityGraph)
+    	log.info("Fetching product with category price range between {} and {}", minPrice, maxPrice);
+    	// Find products in price range (with @EntityGraph)
         return productRepository.findByPriceBetween(minPrice, maxPrice)
             .stream()
             .map(productMapper::toResponseDTO)
@@ -143,7 +176,8 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponseDTO> getActiveProducts() {
-        // Find only active products (with @EntityGraph)
+    	log.info("Fetching active products");
+    	// Find only active products (with @EntityGraph)
         return productRepository.findByActiveTrue()
             .stream()
             .map(productMapper::toResponseDTO)
@@ -151,8 +185,13 @@ public class ProductServiceImpl implements ProductService {
     }
     
     @Override
-    public ProductResponseDTO updateStock(Long id, Integer quantity) {
-        // Find product
+    public ProductResponseDTO updateStock(Long id, Integer quantity,SecurityContext securityContext) {
+    	log.info("Updating product stock for id: {} and stock: {}", id, quantity);
+    	if (!securityContext.getUsername().equals("SYSTEM")) {
+    		log.warn("Access denied: non SYSTEM User tried to update product stock for id: {}", id);
+    	    throw new ForbiddenException("Permission denied: product.write required");
+    	}
+    	// Find product
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Product not found with id: " + id
@@ -164,13 +203,20 @@ public class ProductServiceImpl implements ProductService {
         // Save updated entity
         Product updated = productRepository.save(product);
         
+        log.info("Product stock updated successfully: {}", updated.getId());
+        
         // Convert to response DTO
         return productMapper.toResponseDTO(updated);
     }
     
     @Override
-    public ProductResponseDTO deactivateProduct(Long id) {
-        // Find product
+    public ProductResponseDTO deactivateProduct(Long id,SecurityContext securityContext) {
+    	log.info("Deactivating product id: {} ", id);
+    	if (!securityContext.hasPermission(Permission.PRODUCT_WRITE)) {
+    		log.warn("Access denied: User {} tried to deactivate product id: {}", securityContext.getUserId(), id);
+    		throw new ForbiddenException("Permission denied: product.write required");
+    	}
+    	// Find product
         Product product = productRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Product not found with id: " + id
@@ -181,6 +227,8 @@ public class ProductServiceImpl implements ProductService {
         
         // Save updated entity
         Product updated = productRepository.save(product);
+        
+        log.info("Product deactivated successfully: {}", updated.getId());
         
         // Convert to response DTO
         return productMapper.toResponseDTO(updated);

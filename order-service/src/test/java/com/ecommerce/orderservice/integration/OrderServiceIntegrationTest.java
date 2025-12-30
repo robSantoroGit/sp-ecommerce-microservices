@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
@@ -23,8 +24,10 @@ import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -46,6 +49,7 @@ import com.ecommerce.orderservice.event.OrderStatusChangedEvent;
 import com.ecommerce.orderservice.model.Order;
 import com.ecommerce.orderservice.model.OrderStatus;
 import com.ecommerce.orderservice.repository.OrderRepository;
+import com.ecommerce.orderservice.security.Permission;
 import com.ecommerce.orderservice.service.KafkaProducerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -81,7 +85,7 @@ public class OrderServiceIntegrationTest {
 
     private UserDTO userDTO;
     private ProductDTO productDTO;
-
+    
     @BeforeEach
     void setUp() {
         baseUrl = "http://localhost:" + port + "/api/orders";
@@ -105,9 +109,9 @@ public class OrderServiceIntegrationTest {
         productDTO.setActive(true);
 
         // Default mock behaviors
-        when(userServiceClient.validateUser(anyLong())).thenReturn(userDTO);
-        when(productServiceClient.validateProductAndStock(anyLong(), anyInt())).thenReturn(productDTO);
-        when(productServiceClient.getProduct(anyLong())).thenReturn(productDTO);
+        when(userServiceClient.validateUser(anyLong(), anyString())).thenReturn(userDTO);
+        when(productServiceClient.validateProductAndStock(anyLong(), anyInt(), anyLong(), anyString())).thenReturn(productDTO);
+        when(productServiceClient.getProduct(anyLong(), anyLong(), anyString())).thenReturn(productDTO);
         doNothing().when(productServiceClient).updateProductStock(anyLong(), anyInt());
         
         // Mock Kafka producer (no-op)
@@ -115,20 +119,32 @@ public class OrderServiceIntegrationTest {
         doNothing().when(kafkaProducerService).publishOrderStatusChangedEvent(any(OrderStatusChangedEvent.class));
         doNothing().when(kafkaProducerService).publishOrderCancelledEvent(any(OrderCancelledEvent.class));
     }
+    
+    // Crea HttpHeaders helper nel setUp()
+    private HttpHeaders createHeaders(Long userId, String scopes) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-User-Id", userId.toString());
+        headers.set("X-User-Scopes", scopes);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
 
     @Test
     void shouldCreateOrderSuccessfully() {
         // Given
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
+        //requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address, 123");
         requestDTO.setItems(List.of(itemDTO));
+        
+        HttpHeaders headers = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> request = new HttpEntity<OrderRequestDTO>(requestDTO,headers);
 
         // When
         ResponseEntity<OrderResponseDTO> response = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                request,
                 OrderResponseDTO.class
         );
 
@@ -148,8 +164,8 @@ public class OrderServiceIntegrationTest {
         assertThat(orders.get(0).getStatus()).isEqualTo(OrderStatus.PENDING);
 
         // Verify external service calls
-        verify(userServiceClient).validateUser(1L);
-        verify(productServiceClient).validateProductAndStock(1L, 2);
+        verify(userServiceClient).validateUser(1L,"");
+        verify(productServiceClient).validateProductAndStock(1L, 2, 1L, "");
         verify(productServiceClient).updateProductStock(1L, 8); // 10 - 2
         verify(kafkaProducerService).publishOrderCreatedEvent(any(OrderCreatedEvent.class));
     }
@@ -158,14 +174,16 @@ public class OrderServiceIntegrationTest {
     void shouldReturnBadRequestWhenCreateOrderWithEmptyItems() {
         // Given
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of());
+        
+        HttpHeaders headers = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> request = new HttpEntity<OrderRequestDTO>(requestDTO,headers);
 
         // When
         ResponseEntity<String> response = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                request,
                 String.class
         );
 
@@ -174,8 +192,8 @@ public class OrderServiceIntegrationTest {
         assertThat(orderRepository.findAll()).isEmpty();
         
         // Verify no external service calls
-        verify(userServiceClient, never()).validateUser(anyLong());
-        verify(productServiceClient, never()).validateProductAndStock(anyLong(), anyInt());
+        verify(userServiceClient, never()).validateUser(anyLong(), anyString());
+        verify(productServiceClient, never()).validateProductAndStock(anyLong(), anyInt(), anyLong(), anyString());
     }
 
     @Test
@@ -183,14 +201,18 @@ public class OrderServiceIntegrationTest {
         // Given
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(null);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("pippo","pluto");
 
+        HttpEntity<OrderRequestDTO> request = new HttpEntity<OrderRequestDTO>(requestDTO,headers );
+        
         // When
         ResponseEntity<String> response = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                request,
                 String.class
         );
 
@@ -204,20 +226,26 @@ public class OrderServiceIntegrationTest {
         // Given - Create order first
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
 
+        HttpHeaders headers = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost = new HttpEntity<OrderRequestDTO>(requestDTO,headers);
+        
         ResponseEntity<OrderResponseDTO> createResponse = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                requestForPost,
                 OrderResponseDTO.class
         );
         Long orderId = createResponse.getBody().getId();
 
+        
+        HttpEntity<Void> requestForGet = new HttpEntity<Void>(headers);
         // When
-        ResponseEntity<OrderResponseDTO> response = restTemplate.getForEntity(
+        ResponseEntity<OrderResponseDTO> response = restTemplate.exchange(
                 baseUrl + "/" + orderId,
+                HttpMethod.GET,
+                requestForGet,
                 OrderResponseDTO.class
         );
 
@@ -232,9 +260,15 @@ public class OrderServiceIntegrationTest {
 
     @Test
     void shouldReturnNotFoundWhenGetNonExistentOrder() {
-        // When
-        ResponseEntity<String> response = restTemplate.getForEntity(
+        // Given
+    	HttpHeaders headers = createHeaders(1L,"");
+    	HttpEntity<Void> requestForGet = new HttpEntity<Void>(headers);
+    	
+    	// When
+        ResponseEntity<String> response = restTemplate.exchange(
                 baseUrl + "/999",
+                HttpMethod.GET,
+                requestForGet,
                 String.class
         );
 
@@ -248,16 +282,18 @@ public class OrderServiceIntegrationTest {
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         
         OrderRequestDTO request1 = new OrderRequestDTO();
-        request1.setUserId(1L);
         request1.setDeliveryAddress("Address 1");
         request1.setItems(List.of(itemDTO));
-        restTemplate.postForEntity(baseUrl, request1, OrderResponseDTO.class);
+        
+        HttpHeaders headers1 = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost1 = new HttpEntity<OrderRequestDTO>(request1,headers1);
+        restTemplate.postForEntity(baseUrl, requestForPost1, OrderResponseDTO.class);
 
         OrderRequestDTO request2 = new OrderRequestDTO();
-        request2.setUserId(1L);
         request2.setDeliveryAddress("Address 2");
         request2.setItems(List.of(itemDTO));
-        restTemplate.postForEntity(baseUrl, request2, OrderResponseDTO.class);
+        HttpEntity<OrderRequestDTO> requestForPost2 = new HttpEntity<OrderRequestDTO>(request2,headers1);
+        restTemplate.postForEntity(baseUrl, requestForPost2, OrderResponseDTO.class);
 
         // Create 1 order for user 2
         UserDTO user2 = new UserDTO();
@@ -265,17 +301,22 @@ public class OrderServiceIntegrationTest {
         user2.setFirstName("Jane");
         user2.setLastName("Smith");
         user2.setEmail("jane@example.com");
-        when(userServiceClient.validateUser(2L)).thenReturn(user2);
+        when(userServiceClient.validateUser(2L,"")).thenReturn(user2);
 
         OrderRequestDTO request3 = new OrderRequestDTO();
-        request3.setUserId(2L);
         request3.setDeliveryAddress("Address 3");
         request3.setItems(List.of(itemDTO));
-        restTemplate.postForEntity(baseUrl, request3, OrderResponseDTO.class);
+        HttpHeaders headers2 = createHeaders(2L,"");
+        HttpEntity<OrderRequestDTO> requestForPost3 = new HttpEntity<OrderRequestDTO>(request3,headers2);
+        
+        restTemplate.postForEntity(baseUrl, requestForPost3, OrderResponseDTO.class);
 
         // When
-        ResponseEntity<String> response = restTemplate.getForEntity(
+        HttpEntity<Void> requestForGet = new HttpEntity<Void>(headers1);
+        ResponseEntity<String> response = restTemplate.exchange(
                 baseUrl + "?userId=1&page=0&size=10",
+                HttpMethod.GET,
+                requestForGet,
                 String.class
         );
 
@@ -284,7 +325,7 @@ public class OrderServiceIntegrationTest {
         assertThat(response.getBody()).contains("\"totalElements\":2");
         assertThat(response.getBody()).contains("\"userId\":1");
         
-        verify(userServiceClient, atLeast(1)).validateUser(1L);
+        verify(userServiceClient, atLeast(1)).validateUser(1L,"");
     }
 
     @Test
@@ -294,7 +335,6 @@ public class OrderServiceIntegrationTest {
         
         for (int i = 1; i <= 3; i++) {
             OrderRequestDTO request = new OrderRequestDTO();
-            request.setUserId((long) i);
             request.setDeliveryAddress("Address " + i);
             request.setItems(List.of(itemDTO));
             
@@ -305,15 +345,20 @@ public class OrderServiceIntegrationTest {
                 user.setFirstName("User" + i);
                 user.setLastName("Test");
                 user.setEmail("user" + i + "@example.com");
-                when(userServiceClient.validateUser((long) i)).thenReturn(user);
+                when(userServiceClient.validateUser((long) i, "")).thenReturn(user);
             }
-            
-            restTemplate.postForEntity(baseUrl, request, OrderResponseDTO.class);
+            HttpHeaders headers = createHeaders((long) i,"");
+            HttpEntity<OrderRequestDTO> requestForPost = new HttpEntity<OrderRequestDTO>(request,headers);
+            restTemplate.postForEntity(baseUrl, requestForPost, OrderResponseDTO.class);
         }
 
         // When
-        ResponseEntity<String> response = restTemplate.getForEntity(
+        HttpHeaders headersForGet = createHeaders(999L,Permission.ORDER_READ);
+        HttpEntity<Void> requestForGet = new HttpEntity<Void>(headersForGet);
+        ResponseEntity<String> response = restTemplate.exchange(
                 baseUrl + "?page=0&size=10",
+                HttpMethod.GET,
+                requestForGet,
                 String.class
         );
 
@@ -327,13 +372,15 @@ public class OrderServiceIntegrationTest {
         // Given - Create order
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
 
+        HttpHeaders headers1 = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost1 = new HttpEntity<OrderRequestDTO>(requestDTO,headers1);
+        
         ResponseEntity<OrderResponseDTO> createResponse = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                requestForPost1,
                 OrderResponseDTO.class
         );
         Long orderId = createResponse.getBody().getId();
@@ -341,9 +388,10 @@ public class OrderServiceIntegrationTest {
         PaymentRequestDTO paymentRequest = new PaymentRequestDTO("CREDIT_CARD", "1234-5678");
 
         // When
+        HttpEntity<PaymentRequestDTO> requestForPost2 = new HttpEntity<PaymentRequestDTO>(paymentRequest,headers1);
         ResponseEntity<OrderResponseDTO> response = restTemplate.postForEntity(
                 baseUrl + "/" + orderId + "/payment",
-                paymentRequest,
+                requestForPost2,
                 OrderResponseDTO.class
         );
 
@@ -363,28 +411,31 @@ public class OrderServiceIntegrationTest {
         // Given - Create and pay order
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
 
+        HttpHeaders headers1 = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost1 = new HttpEntity<OrderRequestDTO>(requestDTO,headers1);
+        
         ResponseEntity<OrderResponseDTO> createResponse = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                requestForPost1,
                 OrderResponseDTO.class
         );
         Long orderId = createResponse.getBody().getId();
 
         // Pay order first (PENDING -> PAID)
         PaymentRequestDTO paymentRequest = new PaymentRequestDTO("CREDIT_CARD", "1234");
+        HttpEntity<PaymentRequestDTO> requestForPost2 = new HttpEntity<PaymentRequestDTO>(paymentRequest,headers1);
         restTemplate.postForEntity(
                 baseUrl + "/" + orderId + "/payment",
-                paymentRequest,
+                requestForPost2,
                 OrderResponseDTO.class
         );
 
         // When - Update to CONFIRMED
         OrderStatusUpdateDTO statusUpdate = new OrderStatusUpdateDTO(OrderStatus.CONFIRMED);
-        HttpEntity<OrderStatusUpdateDTO> request = new HttpEntity<>(statusUpdate);
+        HttpEntity<OrderStatusUpdateDTO> request = new HttpEntity<>(statusUpdate,headers1);
         
         ResponseEntity<OrderResponseDTO> response = restTemplate.exchange(
                 baseUrl + "/" + orderId + "/status",
@@ -409,20 +460,22 @@ public class OrderServiceIntegrationTest {
         // Given - Create order (PENDING)
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
 
+        HttpHeaders headers1 = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost1 = new HttpEntity<OrderRequestDTO>(requestDTO,headers1);
+        
         ResponseEntity<OrderResponseDTO> createResponse = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                requestForPost1,
                 OrderResponseDTO.class
         );
         Long orderId = createResponse.getBody().getId();
 
         // When - Try invalid transition PENDING -> SHIPPED
         OrderStatusUpdateDTO statusUpdate = new OrderStatusUpdateDTO(OrderStatus.SHIPPED);
-        HttpEntity<OrderStatusUpdateDTO> request = new HttpEntity<>(statusUpdate);
+        HttpEntity<OrderStatusUpdateDTO> request = new HttpEntity<>(statusUpdate,headers1);
         
         ResponseEntity<String> response = restTemplate.exchange(
                 baseUrl + "/" + orderId + "/status",
@@ -441,22 +494,25 @@ public class OrderServiceIntegrationTest {
         // Given - Create order
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
 
+        HttpHeaders headers1 = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost1 = new HttpEntity<OrderRequestDTO>(requestDTO,headers1);
+        
         ResponseEntity<OrderResponseDTO> createResponse = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                requestForPost1,
                 OrderResponseDTO.class
         );
         Long orderId = createResponse.getBody().getId();
 
         // When
+        HttpEntity<Void> requestForDelete = new HttpEntity<Void>(headers1);
         ResponseEntity<Void> response = restTemplate.exchange(
                 baseUrl + "/" + orderId,
                 HttpMethod.DELETE,
-                null,
+                requestForDelete,
                 Void.class
         );
 
@@ -468,7 +524,7 @@ public class OrderServiceIntegrationTest {
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
         
         // Verify stock restoration
-        verify(productServiceClient).getProduct(1L);
+        verify(productServiceClient).getProduct(1L,1L,"");
         verify(productServiceClient).updateProductStock(1L, 12); // 10 + 2 restored
         verify(kafkaProducerService).publishOrderCancelledEvent(any(OrderCancelledEvent.class));
     }
@@ -478,13 +534,15 @@ public class OrderServiceIntegrationTest {
         // Given - Create order and mark as DELIVERED
         OrderItemRequestDTO itemDTO = new OrderItemRequestDTO(1L, 2);
         OrderRequestDTO requestDTO = new OrderRequestDTO();
-        requestDTO.setUserId(1L);
         requestDTO.setDeliveryAddress("Test Address");
         requestDTO.setItems(List.of(itemDTO));
 
+        HttpHeaders headers1 = createHeaders(1L,"");
+        HttpEntity<OrderRequestDTO> requestForPost1 = new HttpEntity<OrderRequestDTO>(requestDTO,headers1);
+        
         ResponseEntity<OrderResponseDTO> createResponse = restTemplate.postForEntity(
                 baseUrl,
-                requestDTO,
+                requestForPost1,
                 OrderResponseDTO.class
         );
         Long orderId = createResponse.getBody().getId();
@@ -495,10 +553,11 @@ public class OrderServiceIntegrationTest {
         orderRepository.save(order);
 
         // When
+        HttpEntity<Void> requestForDelete = new HttpEntity<Void>(headers1);
         ResponseEntity<String> response = restTemplate.exchange(
                 baseUrl + "/" + orderId,
                 HttpMethod.DELETE,
-                null,
+                requestForDelete,
                 String.class
         );
 

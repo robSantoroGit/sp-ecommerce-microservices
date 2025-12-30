@@ -80,7 +80,8 @@ public class OrderMapper {
         }
 
         Order order = new Order();
-        order.setUserId(requestDTO.getUserId());
+        // spostato nel security context
+        //order.setUserId(requestDTO.getUserId());
         order.setDeliveryAddress(requestDTO.getDeliveryAddress());
 
         return order;

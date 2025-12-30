@@ -1,5 +1,8 @@
 package com.ecommerce.orderservice.controller;
 
+import java.util.Arrays;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +24,7 @@ import com.ecommerce.orderservice.dto.OrderRequestDTO;
 import com.ecommerce.orderservice.dto.OrderResponseDTO;
 import com.ecommerce.orderservice.dto.OrderStatusUpdateDTO;
 import com.ecommerce.orderservice.dto.PaymentRequestDTO;
+import com.ecommerce.orderservice.dto.SecurityContext;
 import com.ecommerce.orderservice.service.OrderService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,6 +46,11 @@ public class OrderController {
     public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }
+    
+    private SecurityContext createSecurityContext(Long userId, String scopesHeader) {
+        List<String> scopes = scopesHeader.isEmpty() ? List.of() : Arrays.asList(scopesHeader.split(","));
+        return new SecurityContext(userId, "user-" + userId, scopes);
+    }
 
     @PostMapping
     @Operation(summary = "Create a new order", description = "Create a new order with items")
@@ -52,8 +62,11 @@ public class OrderController {
             @ApiResponse(responseCode = "503", description = "External service unavailable")
     })
     public ResponseEntity<OrderResponseDTO> createOrder(
-            @Valid @RequestBody OrderRequestDTO requestDTO) {
-        OrderResponseDTO response = orderService.createOrder(requestDTO);
+            @Valid @RequestBody OrderRequestDTO requestDTO,
+            @RequestHeader("X-User-Id") Long authenticatedUserId,
+            @RequestHeader("X-User-Scopes") String scopesHeader) {
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+    	OrderResponseDTO response = orderService.createOrder(requestDTO, securityContext);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -65,8 +78,11 @@ public class OrderController {
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<OrderResponseDTO> getOrderById(
-            @Parameter(description = "Order ID") @PathVariable Long id) {
-        OrderResponseDTO response = orderService.getOrderById(id);
+            @Parameter(description = "Order ID") @PathVariable Long id,
+            @RequestHeader("X-User-Id") Long authenticatedUserId,
+            @RequestHeader("X-User-Scopes") String scopesHeader) {
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+    	OrderResponseDTO response = orderService.getOrderById(id, securityContext);
         return ResponseEntity.ok(response);
     }
 
@@ -79,13 +95,16 @@ public class OrderController {
     })
     public ResponseEntity<Page<OrderResponseDTO>> getOrders(
             @Parameter(description = "User ID (optional)") @RequestParam(required = false) Long userId,
-            @PageableDefault(size = 10, sort = "orderDate", direction = Sort.Direction.DESC) Pageable pageable) {
+            @PageableDefault(size = 10, sort = "orderDate", direction = Sort.Direction.DESC) Pageable pageable,
+            @RequestHeader("X-User-Id") Long authenticatedUserId,
+            @RequestHeader("X-User-Scopes") String scopesHeader) {
         
+    	SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
         Page<OrderResponseDTO> response;
         if (userId != null) {
-            response = orderService.getOrdersByUserId(userId, pageable);
+            response = orderService.getOrdersByUserId(userId, pageable, securityContext);
         } else {
-            response = orderService.getAllOrders(pageable);
+            response = orderService.getAllOrders(pageable, securityContext);
         }
         return ResponseEntity.ok(response);
     }
@@ -100,8 +119,11 @@ public class OrderController {
     })
     public ResponseEntity<OrderResponseDTO> processPayment(
             @Parameter(description = "Order ID") @PathVariable Long id,
-            @Valid @RequestBody PaymentRequestDTO paymentRequest) {
-        OrderResponseDTO response = orderService.processPayment(id, paymentRequest);
+            @Valid @RequestBody PaymentRequestDTO paymentRequest,
+            @RequestHeader("X-User-Id") Long authenticatedUserId,
+            @RequestHeader("X-User-Scopes") String scopesHeader) {
+    	SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+        OrderResponseDTO response = orderService.processPayment(id, paymentRequest, securityContext);
         return ResponseEntity.ok(response);
     }
 
@@ -115,8 +137,11 @@ public class OrderController {
     })
     public ResponseEntity<OrderResponseDTO> updateOrderStatus(
             @Parameter(description = "Order ID") @PathVariable Long id,
-            @Valid @RequestBody OrderStatusUpdateDTO statusUpdate) {
-        OrderResponseDTO response = orderService.updateOrderStatus(id, statusUpdate.getStatus());
+            @Valid @RequestBody OrderStatusUpdateDTO statusUpdate,
+            @RequestHeader("X-User-Id") Long authenticatedUserId,
+            @RequestHeader("X-User-Scopes") String scopesHeader) {
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+    	OrderResponseDTO response = orderService.updateOrderStatus(id, statusUpdate.getStatus(), securityContext);
         return ResponseEntity.ok(response);
     }
 
@@ -128,8 +153,11 @@ public class OrderController {
             @ApiResponse(responseCode = "404", description = "Order not found")
     })
     public ResponseEntity<Void> cancelOrder(
-            @Parameter(description = "Order ID") @PathVariable Long id) {
-        orderService.cancelOrder(id);
+            @Parameter(description = "Order ID") @PathVariable Long id,
+            @RequestHeader("X-User-Id") Long authenticatedUserId,
+            @RequestHeader("X-User-Scopes") String scopesHeader) {
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+    	orderService.cancelOrder(id, securityContext);
         return ResponseEntity.noContent().build();
     }
 }

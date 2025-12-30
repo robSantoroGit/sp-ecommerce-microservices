@@ -1,9 +1,8 @@
 package com.ecommerce.orderservice.controller;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -39,6 +38,8 @@ import com.ecommerce.orderservice.dto.OrderRequestDTO;
 import com.ecommerce.orderservice.dto.OrderResponseDTO;
 import com.ecommerce.orderservice.dto.OrderStatusUpdateDTO;
 import com.ecommerce.orderservice.dto.PaymentRequestDTO;
+import com.ecommerce.orderservice.dto.SecurityContext;
+import com.ecommerce.orderservice.exception.ForbiddenException;
 import com.ecommerce.orderservice.exception.GlobalExceptionHandler;
 import com.ecommerce.orderservice.exception.InsufficientStockException;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusException;
@@ -46,6 +47,7 @@ import com.ecommerce.orderservice.exception.OrderCancellationException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
 import com.ecommerce.orderservice.exception.UserNotFoundException;
 import com.ecommerce.orderservice.model.OrderStatus;
+import com.ecommerce.orderservice.security.Permission;
 import com.ecommerce.orderservice.service.OrderService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -74,7 +76,7 @@ class OrderControllerTest {
         itemRequestDTO = new OrderItemRequestDTO(1L, 2);
         
         orderRequestDTO = new OrderRequestDTO();
-        orderRequestDTO.setUserId(1L);
+        //orderRequestDTO.setUserId(1L);
         orderRequestDTO.setDeliveryAddress("Test Address, 123");
         orderRequestDTO.setItems(List.of(itemRequestDTO));
 
@@ -102,12 +104,14 @@ class OrderControllerTest {
     @Test
     void shouldCreateOrderSuccessfully() throws Exception {
         // Given
-        when(orderService.createOrder(any(OrderRequestDTO.class))).thenReturn(orderResponseDTO);
+        when(orderService.createOrder(any(OrderRequestDTO.class), any(SecurityContext.class))).thenReturn(orderResponseDTO);
 
         // When & Then
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(orderRequestDTO)))
+                        .content(objectMapper.writeValueAsString(orderRequestDTO))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.userId").value(1))
@@ -117,7 +121,7 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].productName").value("Test Product"));
 
-        verify(orderService).createOrder(any(OrderRequestDTO.class));
+        verify(orderService).createOrder(any(OrderRequestDTO.class), any(SecurityContext.class));
     }
 
     @Test
@@ -128,23 +132,27 @@ class OrderControllerTest {
         // When & Then
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(orderRequestDTO)))
+                        .content(objectMapper.writeValueAsString(orderRequestDTO))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Validation Failed"));
 
-        verify(orderService, never()).createOrder(any());
+        verify(orderService, never()).createOrder(any(), any());
     }
 
     @Test
     void shouldReturnNotFoundWhenUserDoesNotExist() throws Exception {
         // Given
-        when(orderService.createOrder(any(OrderRequestDTO.class)))
+        when(orderService.createOrder(any(OrderRequestDTO.class), any(SecurityContext.class)))
                 .thenThrow(new UserNotFoundException(1L));
 
         // When & Then
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(orderRequestDTO)))
+                        .content(objectMapper.writeValueAsString(orderRequestDTO))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Not Found"))
                 .andExpect(jsonPath("$.message").value("User not found with id: 1"));
@@ -153,81 +161,161 @@ class OrderControllerTest {
     @Test
     void shouldReturnBadRequestWhenInsufficientStock() throws Exception {
         // Given
-        when(orderService.createOrder(any(OrderRequestDTO.class)))
+        when(orderService.createOrder(any(OrderRequestDTO.class), any(SecurityContext.class)))
                 .thenThrow(new InsufficientStockException(1L, 10, 5));
 
         // When & Then
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(orderRequestDTO)))
+                        .content(objectMapper.writeValueAsString(orderRequestDTO))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message", containsString("Insufficient stock")));  // ✅ CORRETTO
+                .andExpect(jsonPath("$.message", containsString("Insufficient stock")));  
     }
+    
+    @Test
+    void shouldReturnForbidden() throws Exception {
+        // Given
+        when(orderService.createOrder(any(OrderRequestDTO.class), any(SecurityContext.class)))
+                .thenThrow(new ForbiddenException("Permission denied"));
+
+        // When & Then
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(orderRequestDTO))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message", containsString("Permission denied")));  
+    }
+
 
     @Test
     void shouldGetOrderByIdSuccessfully() throws Exception {
         // Given
-        when(orderService.getOrderById(1L)).thenReturn(orderResponseDTO);
+        when(orderService.getOrderById(eq(1L),any(SecurityContext.class))).thenReturn(orderResponseDTO);
 
         // When & Then
-        mockMvc.perform(get("/api/orders/1"))
+        mockMvc.perform(get("/api/orders/1")
+        		.header("X-User-Id", "1")
+                .header("X-User-Scopes", Permission.ORDER_READ))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.userId").value(1))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.items", hasSize(1)));
 
-        verify(orderService).getOrderById(1L);
+        verify(orderService).getOrderById(any(),any());
     }
 
     @Test
     void shouldReturnNotFoundWhenOrderDoesNotExist() throws Exception {
         // Given
-        when(orderService.getOrderById(999L)).thenThrow(new OrderNotFoundException(999L));
+        when(orderService.getOrderById(eq(999L), any(SecurityContext.class))).thenThrow(new OrderNotFoundException(999L));
 
         // When & Then
-        mockMvc.perform(get("/api/orders/999"))
+        mockMvc.perform(get("/api/orders/999")
+        		.header("X-User-Id", "1")
+                .header("X-User-Scopes", Permission.ORDER_READ))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("Not Found"))
                 .andExpect(jsonPath("$.message").value("Order not found with id: 999"));
+    }
+    
+    @Test
+    void getOrderByIdShouldReturnForbidden() throws Exception {
+        // Given
+        when(orderService.getOrderById(eq(99L), any(SecurityContext.class))).thenThrow(new ForbiddenException("Permission denied"));
+
+        // When & Then
+        mockMvc.perform(get("/api/orders/99")
+        		.header("X-User-Id", "1")
+                .header("X-User-Scopes", ""))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Permission denied"));
     }
 
     @Test
     void shouldGetOrdersByUserIdSuccessfully() throws Exception {
         // Given
         Page<OrderResponseDTO> page = new PageImpl<>(List.of(orderResponseDTO));
-        when(orderService.getOrdersByUserId(eq(1L), any(PageRequest.class))).thenReturn(page);
+        when(orderService.getOrdersByUserId(eq(1L), any(PageRequest.class), any(SecurityContext.class))).thenReturn(page);
 
         // When & Then
         mockMvc.perform(get("/api/orders")
                         .param("userId", "1")
                         .param("page", "0")
-                        .param("size", "10"))
+                        .param("size", "10")
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_READ))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(1)))
                 .andExpect(jsonPath("$.content[0].userId").value(1))
                 .andExpect(jsonPath("$.totalElements").value(1));
 
-        verify(orderService).getOrdersByUserId(eq(1L), any(PageRequest.class));
+        verify(orderService).getOrdersByUserId(eq(1L), any(PageRequest.class), any());
+    }
+    
+    @Test
+    void shouldGetOrdersByUserIdReturnsForbidden() throws Exception {
+        // Given
+    	when(orderService.getOrdersByUserId(eq(1L), any(PageRequest.class), any(SecurityContext.class)))
+        	.thenThrow(new ForbiddenException("Permission denied"));        	
+
+        // When & Then
+        mockMvc.perform(get("/api/orders")
+                        .param("userId", "1")
+                        .param("page", "0")
+                        .param("size", "10")
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", ""))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Permission denied"));
+
+        verify(orderService).getOrdersByUserId(eq(1L), any(PageRequest.class), any());
     }
 
     @Test
     void shouldGetAllOrdersWhenUserIdNotProvided() throws Exception {
         // Given
         Page<OrderResponseDTO> page = new PageImpl<>(List.of(orderResponseDTO));
-        when(orderService.getAllOrders(any(PageRequest.class))).thenReturn(page);
+        when(orderService.getAllOrders(any(PageRequest.class), any(SecurityContext.class))).thenReturn(page);
 
         // When & Then
         mockMvc.perform(get("/api/orders")
                         .param("page", "0")
-                        .param("size", "10"))
+                        .param("size", "10")
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_READ))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content", hasSize(1)))
                 .andExpect(jsonPath("$.totalElements").value(1));
 
-        verify(orderService).getAllOrders(any(PageRequest.class));
-        verify(orderService, never()).getOrdersByUserId(anyLong(), any());
+        verify(orderService).getAllOrders(any(PageRequest.class), any(SecurityContext.class));
+    }
+    
+    @Test
+    void shouldGetAllOrdersReturnsForbidden() throws Exception {
+        // Given
+    	when(orderService.getAllOrders(any(PageRequest.class), any(SecurityContext.class)))
+        	.thenThrow(new ForbiddenException("Permission denied"));        	
+
+        // When & Then
+        mockMvc.perform(get("/api/orders")
+                        .param("page", "0")
+                        .param("size", "10")
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", ""))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message").value("Permission denied"));
+
+        verify(orderService).getAllOrders(any(PageRequest.class), any(SecurityContext.class));
     }
 
     @Test
@@ -235,34 +323,56 @@ class OrderControllerTest {
         // Given
         PaymentRequestDTO paymentRequest = new PaymentRequestDTO("CREDIT_CARD", "1234-5678");
         orderResponseDTO.setStatus(OrderStatus.PAID);
-        when(orderService.processPayment(eq(1L), any(PaymentRequestDTO.class)))
+        when(orderService.processPayment(eq(1L), any(PaymentRequestDTO.class), any(SecurityContext.class)))
                 .thenReturn(orderResponseDTO);
 
         // When & Then
         mockMvc.perform(post("/api/orders/1/payment")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(paymentRequest)))
+                        .content(objectMapper.writeValueAsString(paymentRequest))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.status").value("PAID"));
 
-        verify(orderService).processPayment(eq(1L), any(PaymentRequestDTO.class));
+        verify(orderService).processPayment(eq(1L), any(PaymentRequestDTO.class), any(SecurityContext.class));
     }
 
     @Test
     void shouldReturnBadRequestWhenPaymentOnInvalidStatus() throws Exception {
         // Given
         PaymentRequestDTO paymentRequest = new PaymentRequestDTO("CREDIT_CARD", "1234-5678");
-        when(orderService.processPayment(eq(1L), any(PaymentRequestDTO.class)))
+        when(orderService.processPayment(eq(1L), any(PaymentRequestDTO.class), any(SecurityContext.class)))
                 .thenThrow(new InvalidOrderStatusException(OrderStatus.CONFIRMED, OrderStatus.PAID));
 
         // When & Then
         mockMvc.perform(post("/api/orders/1/payment")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(paymentRequest)))
+                        .content(objectMapper.writeValueAsString(paymentRequest))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.message",containsString("Invalid status transition")));
+    }
+    
+    @Test
+    void shouldPaymentReturnForbidden() throws Exception {
+        // Given
+        PaymentRequestDTO paymentRequest = new PaymentRequestDTO("CREDIT_CARD", "1234-5678");
+        when(orderService.processPayment(eq(1L), any(PaymentRequestDTO.class), any(SecurityContext.class)))
+                .thenThrow(new ForbiddenException("Permission denied"));
+
+        // When & Then
+        mockMvc.perform(post("/api/orders/1/payment")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(paymentRequest))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", ""))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Forbidden"))
+                .andExpect(jsonPath("$.message",containsString("Permission denied")));
     }
 
     @Test
@@ -270,57 +380,98 @@ class OrderControllerTest {
         // Given
         OrderStatusUpdateDTO statusUpdate = new OrderStatusUpdateDTO(OrderStatus.CONFIRMED);
         orderResponseDTO.setStatus(OrderStatus.CONFIRMED);
-        when(orderService.updateOrderStatus(1L, OrderStatus.CONFIRMED)).thenReturn(orderResponseDTO);
+        when(orderService.updateOrderStatus(eq(1L), eq(OrderStatus.CONFIRMED), any(SecurityContext.class))).thenReturn(orderResponseDTO);
 
         // When & Then
         mockMvc.perform(put("/api/orders/1/status")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(statusUpdate)))
+                        .content(objectMapper.writeValueAsString(statusUpdate))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.status").value("CONFIRMED"));
 
-        verify(orderService).updateOrderStatus(1L, OrderStatus.CONFIRMED);
+        verify(orderService).updateOrderStatus(eq(1L), eq(OrderStatus.CONFIRMED), any());
     }
 
     @Test
     void shouldReturnBadRequestWhenInvalidStatusTransition() throws Exception {
         // Given
         OrderStatusUpdateDTO statusUpdate = new OrderStatusUpdateDTO(OrderStatus.SHIPPED);
-        when(orderService.updateOrderStatus(1L, OrderStatus.SHIPPED))
+        when(orderService.updateOrderStatus(eq(1L), eq(OrderStatus.SHIPPED), any(SecurityContext.class)))
                 .thenThrow(new InvalidOrderStatusException(OrderStatus.PENDING, OrderStatus.SHIPPED));
 
         // When & Then
         mockMvc.perform(put("/api/orders/1/status")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(statusUpdate)))
+                        .content(objectMapper.writeValueAsString(statusUpdate))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", Permission.ORDER_WRITE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.message",containsString("Invalid status transition")));
+    }
+    
+    @Test
+    void shouldUpdateOrderStatusReturnsForbidden() throws Exception {
+        // Given
+        OrderStatusUpdateDTO statusUpdate = new OrderStatusUpdateDTO(OrderStatus.SHIPPED);
+        when(orderService.updateOrderStatus(eq(1L), eq(OrderStatus.SHIPPED), any(SecurityContext.class)))
+                .thenThrow(new ForbiddenException("Permission denied"));
+
+        // When & Then
+        mockMvc.perform(put("/api/orders/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(statusUpdate))
+                        .header("X-User-Id", "1")
+                        .header("X-User-Scopes", ""))
+				        .andExpect(status().isForbidden())
+				        .andExpect(jsonPath("$.error").value("Forbidden"))
+				        .andExpect(jsonPath("$.message",containsString("Permission denied")));
     }
 
     @Test
     void shouldCancelOrderSuccessfully() throws Exception {
         // Given
-        doNothing().when(orderService).cancelOrder(1L);
+        doNothing().when(orderService).cancelOrder(eq(1L), any(SecurityContext.class));
 
         // When & Then
-        mockMvc.perform(delete("/api/orders/1"))
+        mockMvc.perform(delete("/api/orders/1")
+        		.header("X-User-Id", "1")
+                .header("X-User-Scopes", Permission.ORDER_DELETE))
                 .andExpect(status().isNoContent());
 
-        verify(orderService).cancelOrder(1L);
+        verify(orderService).cancelOrder(eq(1L), any(SecurityContext.class));
     }
 
     @Test
     void shouldReturnBadRequestWhenOrderNotCancellable() throws Exception {
         // Given
         doThrow(new OrderCancellationException(1L, OrderStatus.DELIVERED))
-                .when(orderService).cancelOrder(1L);
+                .when(orderService).cancelOrder(eq(1L), any(SecurityContext.class));
 
         // When & Then
-        mockMvc.perform(delete("/api/orders/1"))
+        mockMvc.perform(delete("/api/orders/1")
+        		.header("X-User-Id", "1")
+                .header("X-User-Scopes", Permission.ORDER_DELETE))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.message",containsString("Cannot cancel order")));
+    }
+    
+    @Test
+    void shouldCancelOrderReturnsForbidden() throws Exception {
+        // Given
+        doThrow(new ForbiddenException("Permission denied"))
+                .when(orderService).cancelOrder(eq(1L), any(SecurityContext.class));
+
+        // When & Then
+        mockMvc.perform(delete("/api/orders/1")
+        		.header("X-User-Id", "1")
+                .header("X-User-Scopes", ""))
+                .andExpect(status().isForbidden())
+		        .andExpect(jsonPath("$.error").value("Forbidden"))
+		        .andExpect(jsonPath("$.message",containsString("Permission denied")));
     }
 }

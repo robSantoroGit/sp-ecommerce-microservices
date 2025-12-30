@@ -1,0 +1,141 @@
+# Order Service - Kubernetes Configuration Profile
+# Active with: SPRING_PROFILES_ACTIVE=kubernetes
+
+spring:
+  application:
+    name: ${SPRING_APPLICATION_NAME}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE}
+      minimum-idle: ${HIKARI_MIN_IDLE}
+      connection-timeout: ${HIKARI_CONNECTION_TIMEOUT}
+      idle-timeout: ${HIKARI_IDLE_TIMEOUT}
+      max-lifetime: ${HIKARI_MAX_LIFETIME}
+
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO}
+    show-sql: ${SPRING_JPA_SHOW_SQL}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        linger.ms: 10
+        batch.size: 16384
+
+    # Topic names
+    topics:
+      order-created: ${KAFKA_TOPIC_ORDER_CREATED}
+      order-status-changed: ${KAFKA_TOPIC_ORDER_STATUS_CHANGED}
+      order-cancelled: ${KAFKA_TOPIC_ORDER_CANCELLED}
+
+server:
+  port: ${SERVER_PORT}
+
+# External Services URLs
+services:
+  user-service:
+    url: ${USER_SERVICE_URL}
+  product-service:
+    url: ${PRODUCT_SERVICE_URL}
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${MANAGEMENT_ENDPOINTS_INCLUDE}
+  endpoint:
+    health:
+      show-details: ${MANAGEMENT_HEALTH_SHOW_DETAILS}
+      probes:
+        enabled: ${MANAGEMENT_HEALTH_PROBES_ENABLED}
+  metrics:
+    export:
+      prometheus:
+        enabled: ${MANAGEMENT_METRICS_PROMETHEUS_ENABLED}
+
+# SpringDoc OpenAPI
+springdoc:
+  api-docs:
+    path: ${SPRINGDOC_API_DOCS_PATH}
+  swagger-ui:
+    path: ${SPRINGDOC_SWAGGER_UI_PATH}
+    tags-sorter: ${SPRINGDOC_TAGS_SORTER}
+    operations-sorter: ${SPRINGDOC_OPERATIONS_SORTER}
+  show-actuator: ${SPRINGDOC_SHOW_ACTUATOR}
+
+# Logging
+logging:
+  level:
+    com.ecommerce.orderservice: ${LOG_LEVEL_APP}
+    org.springframework.web: ${LOG_LEVEL_SPRING}
+    org.hibernate.SQL: ${LOG_LEVEL_SQL}
+    org.hibernate.type.descriptor.sql.BasicBinder: ${LOG_LEVEL_SQL_BINDER}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"
+
+# Resilience4j Configuration
+http:
+  client:
+    connect-timeout: ${HTTP_CLIENT_CONNECT_TIMEOUT}
+    read-timeout: ${HTTP_CLIENT_READ_TIMEOUT}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: ${CIRCUIT_BREAKER_SLIDING_WINDOW_SIZE}
+        failureRateThreshold: ${CIRCUIT_BREAKER_FAILURE_RATE_THRESHOLD}
+        waitDurationInOpenState: ${CIRCUIT_BREAKER_WAIT_DURATION}
+        permittedNumberOfCallsInHalfOpenState: ${CIRCUIT_BREAKER_HALF_OPEN_CALLS}
+        automaticTransitionFromOpenToHalfOpenEnabled: ${CIRCUIT_BREAKER_AUTO_TRANSITION}
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+
+  retry:
+    configs:
+      default:
+        maxAttempts: ${RETRY_MAX_ATTEMPTS}
+        waitDuration: ${RETRY_WAIT_DURATION}
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - java.net.ConnectException
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default
+
+  timeout:
+    configs:
+      default:
+        timeoutDuration: ${TIMEOUT_DURATION}
+    instances:
+      userService:
+        baseConfig: default
+      productService:
+        baseConfig: default

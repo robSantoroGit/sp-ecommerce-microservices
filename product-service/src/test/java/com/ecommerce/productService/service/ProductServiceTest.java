@@ -3,11 +3,16 @@ package com.ecommerce.productService.service;
 import com.ecommerce.productService.dto.ProductMapper;
 import com.ecommerce.productService.dto.ProductRequestDTO;
 import com.ecommerce.productService.dto.ProductResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
+import com.ecommerce.productService.exception.ForbiddenException;
 import com.ecommerce.productService.exception.ResourceNotFoundException;
 import com.ecommerce.productService.model.Category;
 import com.ecommerce.productService.model.Product;
 import com.ecommerce.productService.repository.CategoryRepository;
 import com.ecommerce.productService.repository.ProductRepository;
+import com.ecommerce.productService.security.Permission;
+
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +44,20 @@ class ProductServiceTest {
     @InjectMocks
     private ProductServiceImpl productService;
     
+    private SecurityContext adminContext;
+    private SecurityContext userContext;
+    
+    @BeforeEach
+    void setUp() {
+        adminContext = new SecurityContext(999L, "admin", List.of(
+            Permission.PRODUCT_READ,
+            Permission.PRODUCT_WRITE,
+            Permission.PRODUCT_DELETE
+        ));
+        
+        userContext = new SecurityContext(1L, "user", List.of());
+    }
+    
     @Test
     void createProduct_Success() {
         // Given
@@ -63,7 +82,7 @@ class ProductServiceTest {
         when(productMapper.toResponseDTO(product)).thenReturn(responseDTO);
         
         // When
-        ProductResponseDTO result = productService.createProduct(dto);
+        ProductResponseDTO result = productService.createProduct(dto, adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -86,11 +105,28 @@ class ProductServiceTest {
         when(categoryRepository.findById(999L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> productService.createProduct(dto))
+        assertThatThrownBy(() -> productService.createProduct(dto, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Category not found with id: 999");
         
         verify(categoryRepository).findById(999L);
+        verify(productMapper, never()).toEntity(any(), any());
+        verify(productRepository, never()).save(any());
+    }
+    
+    @Test
+    void createProduct_ThrowsForbiddenException() {
+        // Given
+        ProductRequestDTO dto = new ProductRequestDTO(
+            "MacBook Pro", "Apple laptop", new BigDecimal("2499.99"), 10, 999L
+        );
+        
+        // When & Then
+        assertThatThrownBy(() -> productService.createProduct(dto, userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(categoryRepository, never()).findById(anyLong());
         verify(productMapper, never()).toEntity(any(), any());
         verify(productRepository, never()).save(any());
     }
@@ -205,7 +241,7 @@ class ProductServiceTest {
         when(productMapper.toResponseDTO(updatedProduct)).thenReturn(responseDTO);
         
         // When
-        ProductResponseDTO result = productService.updateProduct(1L, dto);
+        ProductResponseDTO result = productService.updateProduct(1L, dto, adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -228,7 +264,7 @@ class ProductServiceTest {
         when(productRepository.findById(999L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> productService.updateProduct(999L, dto))
+        assertThatThrownBy(() -> productService.updateProduct(999L, dto, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Product not found with id: 999");
         
@@ -256,7 +292,7 @@ class ProductServiceTest {
         when(categoryRepository.findById(999L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> productService.updateProduct(1L, dto))
+        assertThatThrownBy(() -> productService.updateProduct(1L, dto, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Category not found with id: 999");
         
@@ -267,12 +303,31 @@ class ProductServiceTest {
     }
     
     @Test
+    void updateProduct_ThrowsForbiddenException() {
+        // Given
+        ProductRequestDTO dto = new ProductRequestDTO(
+            "MacBook", "Description", new BigDecimal("2499.99"), 10, 1L
+        );
+        
+        
+        // When & Then
+        assertThatThrownBy(() -> productService.updateProduct(999L, dto, userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(productRepository, never()).findById(anyLong());
+        verify(categoryRepository, never()).findById(any());
+        verify(productMapper, never()).updateEntityFromDTO(any(), any(), any());
+        verify(productRepository, never()).save(any());
+    }
+    
+    @Test
     void deleteProduct_Success() {
         // Given
         when(productRepository.existsById(1L)).thenReturn(true);
         
         // When
-        productService.deleteProduct(1L);
+        productService.deleteProduct(1L, adminContext);
         
         // Then
         verify(productRepository).existsById(1L);
@@ -285,11 +340,23 @@ class ProductServiceTest {
         when(productRepository.existsById(999L)).thenReturn(false);
         
         // When & Then
-        assertThatThrownBy(() -> productService.deleteProduct(999L))
+        assertThatThrownBy(() -> productService.deleteProduct(999L, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Product not found with id: 999");
         
         verify(productRepository).existsById(999L);
+        verify(productRepository, never()).deleteById(any());
+    }
+    
+    @Test
+    void deleteProduct_ThrowsForbiddenException() {
+        
+        // When & Then
+        assertThatThrownBy(() -> productService.deleteProduct(999L, userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(productRepository,never()).existsById(anyLong());
         verify(productRepository, never()).deleteById(any());
     }
     
@@ -455,7 +522,7 @@ class ProductServiceTest {
         when(productMapper.toResponseDTO(updatedProduct)).thenReturn(responseDTO);
         
         // When
-        ProductResponseDTO result = productService.updateStock(1L, 25);
+        ProductResponseDTO result = productService.updateStock(1L, 25, adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -472,11 +539,23 @@ class ProductServiceTest {
         when(productRepository.findById(999L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> productService.updateStock(999L, 25))
+        assertThatThrownBy(() -> productService.updateStock(999L, 25, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Product not found with id: 999");
         
         verify(productRepository).findById(999L);
+        verify(productRepository, never()).save(any());
+    }
+    
+    @Test
+    void updateStock_ThrowsForbiddenException() {
+        
+        // When & Then
+        assertThatThrownBy(() -> productService.updateStock(999L, 25, userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(productRepository,never()).findById(anyLong());
         verify(productRepository, never()).save(any());
     }
     
@@ -504,7 +583,7 @@ class ProductServiceTest {
         when(productMapper.toResponseDTO(deactivatedProduct)).thenReturn(responseDTO);
         
         // When
-        ProductResponseDTO result = productService.deactivateProduct(1L);
+        ProductResponseDTO result = productService.deactivateProduct(1L,adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -521,11 +600,23 @@ class ProductServiceTest {
         when(productRepository.findById(999L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> productService.deactivateProduct(999L))
+        assertThatThrownBy(() -> productService.deactivateProduct(999L, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Product not found with id: 999");
         
         verify(productRepository).findById(999L);
+        verify(productRepository, never()).save(any());
+    }
+    
+    @Test
+    void deactivateProduct_ThrowsForbiddenException() {
+        
+        // When & Then
+        assertThatThrownBy(() -> productService.deactivateProduct(999L, userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(productRepository, never()).findById(anyLong());
         verify(productRepository, never()).save(any());
     }
 }

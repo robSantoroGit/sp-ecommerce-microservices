@@ -21,9 +21,11 @@ import com.ecommerce.orderservice.dto.OrderRequestDTO;
 import com.ecommerce.orderservice.dto.OrderResponseDTO;
 import com.ecommerce.orderservice.dto.PaymentRequestDTO;
 import com.ecommerce.orderservice.dto.ProductDTO;
+import com.ecommerce.orderservice.dto.SecurityContext;
 import com.ecommerce.orderservice.event.OrderCancelledEvent;
 import com.ecommerce.orderservice.event.OrderCreatedEvent;
 import com.ecommerce.orderservice.event.OrderStatusChangedEvent;
+import com.ecommerce.orderservice.exception.ForbiddenException;
 import com.ecommerce.orderservice.exception.InvalidOrderStatusException;
 import com.ecommerce.orderservice.exception.OrderCancellationException;
 import com.ecommerce.orderservice.exception.OrderNotFoundException;
@@ -31,6 +33,7 @@ import com.ecommerce.orderservice.model.Order;
 import com.ecommerce.orderservice.model.OrderItem;
 import com.ecommerce.orderservice.model.OrderStatus;
 import com.ecommerce.orderservice.repository.OrderRepository;
+import com.ecommerce.orderservice.security.Permission;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -58,18 +61,21 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponseDTO createOrder(OrderRequestDTO requestDTO) {
-        logger.info("Creating order for user: {}", requestDTO.getUserId());
+    public OrderResponseDTO createOrder(OrderRequestDTO requestDTO, SecurityContext securityContext) {
+        //logger.info("Creating order for user: {}", requestDTO.getUserId());
+    	logger.info("Creating order for user: {}", securityContext.getUserId());
 
         // 1. Validate user exists
-        userServiceClient.validateUser(requestDTO.getUserId());
+        //userServiceClient.validateUser(requestDTO.getUserId());
+    	userServiceClient.validateUser(securityContext.getUserId(), String.join(",", securityContext.getScopes()) );
 
         // 2. Validate products and check stock availability
         Map<Long, ProductDTO> productMap = new HashMap<>();
         for (OrderItemRequestDTO itemDTO : requestDTO.getItems()) {
             ProductDTO product = productServiceClient.validateProductAndStock(
                     itemDTO.getProductId(), 
-                    itemDTO.getQuantity()
+                    itemDTO.getQuantity(),
+                    securityContext.getUserId(), String.join(",", securityContext.getScopes()) 
             );
             productMap.put(product.getId(), product);
         }
@@ -77,6 +83,7 @@ public class OrderServiceImpl implements OrderService {
         // 3. Create Order entity
         Order order = orderMapper.toEntity(requestDTO);
         order.setStatus(OrderStatus.PENDING);
+        order.setUserId(securityContext.getUserId());
 
         // 4. Create OrderItems and calculate total
         BigDecimal totalAmount = BigDecimal.ZERO;
@@ -126,59 +133,81 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public OrderResponseDTO getOrderById(Long id) {
-        logger.debug("Getting order by id: {}", id);
+    public OrderResponseDTO getOrderById(Long id, SecurityContext securityContext) {
+    	
+    	logger.debug("Getting order by id: {}", id);
         
         Order order = orderRepository.findByIdWithItems(id)
                 .orElseThrow(() -> new OrderNotFoundException(id));
 
+        if ( !securityContext.hasPermission(Permission.ORDER_READ) && !securityContext.isOwner(order.getUserId()) ) {
+        	logger.warn("Permission denied to get order {} for user {}",id,securityContext.getUserId());
+        	throw new ForbiddenException("Permission denied for user: " + securityContext.getUserId() + " getting order with id: " + id);
+        }
+        
         OrderResponseDTO responseDTO = orderMapper.toResponseDTO(order);
-        enrichOrderItemsWithProductNames(responseDTO);
+        enrichOrderItemsWithProductNames(responseDTO, securityContext);
 
         return responseDTO;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderResponseDTO> getOrdersByUserId(Long userId) {
-        logger.debug("Getting orders for user: {}", userId);
+    public List<OrderResponseDTO> getOrdersByUserId(Long userId, SecurityContext securityContext) {
+    	if ( !securityContext.hasPermission(Permission.ORDER_READ) && !securityContext.isOwner(userId) ) {
+        	logger.warn("Permission denied to get orders for user {}",securityContext.getUserId());
+        	throw new ForbiddenException("Permission denied for user: " + securityContext.getUserId() + " getting his/her orders");
+        }
+        
+    	logger.debug("Getting orders for user: {}", userId);
         
         // Validate user exists
-        userServiceClient.validateUser(userId);
+        userServiceClient.validateUser(securityContext.getUserId(), String.join(",", securityContext.getScopes()));
 
         List<Order> orders = orderRepository.findByUserIdWithItems(userId);
         List<OrderResponseDTO> responseDTOs = orderMapper.toResponseDTOList(orders);
 
         // Enrich all orders with product names
-        responseDTOs.forEach(this::enrichOrderItemsWithProductNames);
+        responseDTOs.forEach( r-> enrichOrderItemsWithProductNames(r,securityContext) );
 
         return responseDTOs;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<OrderResponseDTO> getOrdersByUserId(Long userId, Pageable pageable) {
-        logger.debug("Getting orders for user: {} with pagination", userId);
+    public Page<OrderResponseDTO> getOrdersByUserId(Long userId, Pageable pageable, SecurityContext securityContext) {
+
+    	if ( !securityContext.hasPermission(Permission.ORDER_READ) && !securityContext.isOwner(userId) ) {
+        	logger.warn("Permission denied to get orders for user {}",securityContext.getUserId());
+        	throw new ForbiddenException("Permission denied for user: " + securityContext.getUserId() + " getting his/her orders");
+        }
+    	
+    	logger.debug("Getting orders for user: {} with pagination", userId);
         
         // Validate user exists
-        userServiceClient.validateUser(userId);
+        userServiceClient.validateUser(securityContext.getUserId(), String.join(",", securityContext.getScopes()));
 
         Page<Order> orders = orderRepository.findByUserId(userId, pageable);
         
         return orders.map(order -> {
             OrderResponseDTO dto = orderMapper.toResponseDTO(order);
-            enrichOrderItemsWithProductNames(dto);
+            enrichOrderItemsWithProductNames(dto, securityContext);
             return dto;
         });
     }
 
     @Override
     @Transactional
-    public OrderResponseDTO processPayment(Long orderId, PaymentRequestDTO paymentRequest) {
+    public OrderResponseDTO processPayment(Long orderId, PaymentRequestDTO paymentRequest, SecurityContext securityContext) {
         logger.info("Processing payment for order: {}", orderId);
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
+        
+        if ( !securityContext.hasPermission(Permission.ORDER_WRITE) && !securityContext.isOwner(order.getUserId()) ) {
+        	logger.warn("Permission denied to process payments for order {} and for user {}", order.getId(), securityContext.getUserId());
+        	throw new ForbiddenException("Permission denied to process payments for order " + order.getId() + " for user: " + securityContext.getUserId());
+        }
 
         // Validate current status is PENDING
         if (order.getStatus() != OrderStatus.PENDING) {
@@ -200,7 +229,7 @@ public class OrderServiceImpl implements OrderService {
         logger.info("Payment processed successfully for order: {}", orderId);
 
         OrderResponseDTO responseDTO = orderMapper.toResponseDTO(savedOrder);
-        enrichOrderItemsWithProductNames(responseDTO);
+        enrichOrderItemsWithProductNames(responseDTO, securityContext);
 
         // Publish Kafka event - order.status.changed
         OrderStatusChangedEvent event = new OrderStatusChangedEvent(
@@ -217,12 +246,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponseDTO updateOrderStatus(Long orderId, OrderStatus newStatus) {
+    public OrderResponseDTO updateOrderStatus(Long orderId, OrderStatus newStatus, SecurityContext securityContext) {
         logger.info("Updating order status: {} to {}", orderId, newStatus);
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
 
+        if ( !securityContext.hasPermission(Permission.ORDER_WRITE) && !securityContext.isOwner(order.getUserId()) ) {
+        	logger.warn("Permission denied to update status for order {} and for user {}", order.getId(), securityContext.getUserId());
+        	throw new ForbiddenException("Permission denied to update status for order " + order.getId() + " for user: " + securityContext.getUserId());
+        }
+        
         // Validate status transition
         if (!OrderStatus.isValidTransition(order.getStatus(), newStatus)) {
             throw new InvalidOrderStatusException(order.getStatus(), newStatus);
@@ -239,7 +273,7 @@ public class OrderServiceImpl implements OrderService {
         logger.info("Order status updated successfully: {} -> {}", orderId, newStatus);
 
         OrderResponseDTO responseDTO = orderMapper.toResponseDTO(savedOrder);
-        enrichOrderItemsWithProductNames(responseDTO);
+        enrichOrderItemsWithProductNames(responseDTO, securityContext);
 
         // Publish Kafka event - order.status.changed
         OrderStatusChangedEvent event = new OrderStatusChangedEvent(
@@ -256,12 +290,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void cancelOrder(Long orderId) {
+    public void cancelOrder(Long orderId, SecurityContext securityContext) {
         logger.info("Cancelling order: {}", orderId);
 
         Order order = orderRepository.findByIdWithItems(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
 
+        if ( !securityContext.hasPermission(Permission.ORDER_DELETE) && !securityContext.isOwner(order.getUserId()) ) {
+        	logger.warn("Permission denied to delete order {} for user {}", order.getId(), securityContext.getUserId());
+        	throw new ForbiddenException("Permission denied to delete order " + order.getId() + " for user: " + securityContext.getUserId());
+        }
+        
         // Validate order can be cancelled
         if (!order.getStatus().isCancellable()) {
             throw new OrderCancellationException(orderId, order.getStatus());
@@ -269,7 +308,7 @@ public class OrderServiceImpl implements OrderService {
 
         // Restore product stock
         for (OrderItem item : order.getItems()) {
-            ProductDTO product = productServiceClient.getProduct(item.getProductId());
+            ProductDTO product = productServiceClient.getProduct(item.getProductId(),securityContext.getUserId(), String.join(",", securityContext.getScopes()));
             Integer restoredStock = product.getStock() + item.getQuantity();
             productServiceClient.updateProductStock(item.getProductId(), restoredStock);
             logger.debug("Restored stock for product {}: +{} (new total: {})", 
@@ -295,28 +334,36 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderResponseDTO> getAllOrders() {
-        logger.debug("Getting all orders");
+    public List<OrderResponseDTO> getAllOrders(SecurityContext securityContext) {
+    	if ( !securityContext.hasPermission(Permission.ORDER_READ)) {
+        	logger.warn("Permission denied to get all orders");
+        	throw new ForbiddenException("Permission denied to get all orders");
+        }
+    	logger.debug("Getting all orders");
         
         List<Order> orders = orderRepository.findAll();
         List<OrderResponseDTO> responseDTOs = orderMapper.toResponseDTOList(orders);
 
         // Enrich all orders with product names
-        responseDTOs.forEach(this::enrichOrderItemsWithProductNames);
+        responseDTOs.forEach( r-> enrichOrderItemsWithProductNames(r, securityContext));
 
         return responseDTOs;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<OrderResponseDTO> getAllOrders(Pageable pageable) {
-        logger.debug("Getting all orders with pagination");
+    public Page<OrderResponseDTO> getAllOrders(Pageable pageable, SecurityContext securityContext) {
+    	if ( !securityContext.hasPermission(Permission.ORDER_READ)) {
+        	logger.warn("Permission denied to get all orders");
+        	throw new ForbiddenException("Permission denied to get all orders");
+        }
+    	logger.debug("Getting all orders with pagination");
         
         Page<Order> orders = orderRepository.findAll(pageable);
         
         return orders.map(order -> {
             OrderResponseDTO dto = orderMapper.toResponseDTO(order);
-            enrichOrderItemsWithProductNames(dto);
+            enrichOrderItemsWithProductNames(dto, securityContext);
             return dto;
         });
     }
@@ -324,10 +371,10 @@ public class OrderServiceImpl implements OrderService {
     /**
      * Enrich OrderItemResponseDTOs with product names from Product Service
      */
-    private void enrichOrderItemsWithProductNames(OrderResponseDTO orderDTO) {
+    private void enrichOrderItemsWithProductNames(OrderResponseDTO orderDTO, SecurityContext securityContext) {
         for (OrderItemResponseDTO itemDTO : orderDTO.getItems()) {
             try {
-                ProductDTO product = productServiceClient.getProduct(itemDTO.getProductId());
+                ProductDTO product = productServiceClient.getProduct(itemDTO.getProductId(), securityContext.getUserId(), String.join(",", securityContext.getScopes()));
                 itemDTO.setProductName(product.getName());
             } catch (Exception e) {
                 logger.warn("Could not fetch product name for productId: {}", itemDTO.getProductId());

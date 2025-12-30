@@ -1,26 +1,35 @@
 package com.ecommerce.productService.service;
 
-import com.ecommerce.productService.dto.CategoryMapper;
-import com.ecommerce.productService.dto.CategoryRequestDTO;
-import com.ecommerce.productService.dto.CategoryResponseDTO;
-import com.ecommerce.productService.exception.DuplicateResourceException;
-import com.ecommerce.productService.exception.ResourceNotFoundException;
-import com.ecommerce.productService.model.Category;
-import com.ecommerce.productService.repository.CategoryRepository;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import com.ecommerce.productService.dto.CategoryMapper;
+import com.ecommerce.productService.dto.CategoryRequestDTO;
+import com.ecommerce.productService.dto.CategoryResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
+import com.ecommerce.productService.exception.DuplicateResourceException;
+import com.ecommerce.productService.exception.ForbiddenException;
+import com.ecommerce.productService.exception.ResourceNotFoundException;
+import com.ecommerce.productService.model.Category;
+import com.ecommerce.productService.repository.CategoryRepository;
+import com.ecommerce.productService.security.Permission;
 
 @ExtendWith(MockitoExtension.class)
 class CategoryServiceTest {
@@ -33,6 +42,20 @@ class CategoryServiceTest {
     
     @InjectMocks
     private CategoryServiceImpl categoryService;
+    
+    private SecurityContext adminContext;
+    private SecurityContext userContext;
+    
+    @BeforeEach
+    void setUp() {
+        adminContext = new SecurityContext(999L, "admin", List.of(
+            Permission.PRODUCT_READ,
+            Permission.PRODUCT_WRITE,
+            Permission.PRODUCT_DELETE
+        ));
+        
+        userContext = new SecurityContext(1L, "user", List.of());
+    }
     
     @Test
     void createCategory_Success() {
@@ -48,7 +71,7 @@ class CategoryServiceTest {
         when(categoryMapper.toResponseDTO(category)).thenReturn(responseDTO);
         
         // When
-        CategoryResponseDTO result = categoryService.createCategory(dto);
+        CategoryResponseDTO result = categoryService.createCategory(dto,adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -69,13 +92,25 @@ class CategoryServiceTest {
         when(categoryRepository.existsByName("Electronics")).thenReturn(true);
         
         // When & Then
-        assertThatThrownBy(() -> categoryService.createCategory(dto))
+        assertThatThrownBy(() -> categoryService.createCategory(dto,adminContext))
             .isInstanceOf(DuplicateResourceException.class)
             .hasMessageContaining("Category already exists with name: Electronics");
         
         verify(categoryRepository).existsByName("Electronics");
         verify(categoryMapper, never()).toEntity(any());
         verify(categoryRepository, never()).save(any());
+    }
+    
+    @Test
+    void createCategory_WithoutPermission_ThrowsForbiddenException() {
+        // Given
+    	// Given
+        CategoryRequestDTO dto = new CategoryRequestDTO("Electronics", "Devices");
+    	// When & then
+    	assertThatThrownBy(() -> categoryService.createCategory(dto, userContext))
+                .isInstanceOf(ForbiddenException.class);
+    	// verify
+    	verify(categoryRepository,never()).save(any(Category.class));
     }
     
     @Test
@@ -159,7 +194,7 @@ class CategoryServiceTest {
         when(categoryMapper.toResponseDTO(updatedCategory)).thenReturn(responseDTO);
         
         // When
-        CategoryResponseDTO result = categoryService.updateCategory(1L, dto);
+        CategoryResponseDTO result = categoryService.updateCategory(1L, dto, adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -179,7 +214,7 @@ class CategoryServiceTest {
         when(categoryRepository.findById(999L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> categoryService.updateCategory(999L, dto))
+        assertThatThrownBy(() -> categoryService.updateCategory(999L, dto, adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Category not found with id: 999");
         
@@ -203,7 +238,7 @@ class CategoryServiceTest {
         when(categoryRepository.findByName("Books")).thenReturn(Optional.of(otherCategory));
         
         // When & Then
-        assertThatThrownBy(() -> categoryService.updateCategory(1L, dto))
+        assertThatThrownBy(() -> categoryService.updateCategory(1L, dto, adminContext))
             .isInstanceOf(DuplicateResourceException.class)
             .hasMessageContaining("Category already exists with name: Books");
         
@@ -231,7 +266,7 @@ class CategoryServiceTest {
         when(categoryMapper.toResponseDTO(updatedCategory)).thenReturn(responseDTO);
         
         // When
-        CategoryResponseDTO result = categoryService.updateCategory(1L, dto);
+        CategoryResponseDTO result = categoryService.updateCategory(1L, dto, adminContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -243,12 +278,27 @@ class CategoryServiceTest {
     }
     
     @Test
+    void updateCategory_ThrowsForbiddenException() {
+        // Given
+        CategoryRequestDTO dto = new CategoryRequestDTO("Electronics", "Description");
+        
+        // When & Then
+        assertThatThrownBy(() -> categoryService.updateCategory(999L, dto, userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(categoryRepository,never()).findById(anyLong());
+        verify(categoryMapper, never()).updateEntityFromDTO(any(), any());
+        verify(categoryRepository, never()).save(any());
+    }
+    
+    @Test
     void deleteCategory_Success() {
         // Given
         when(categoryRepository.existsById(1L)).thenReturn(true);
         
         // When
-        categoryService.deleteCategory(1L);
+        categoryService.deleteCategory(1L,adminContext);
         
         // Then
         verify(categoryRepository).existsById(1L);
@@ -261,11 +311,23 @@ class CategoryServiceTest {
         when(categoryRepository.existsById(999L)).thenReturn(false);
         
         // When & Then
-        assertThatThrownBy(() -> categoryService.deleteCategory(999L))
+        assertThatThrownBy(() -> categoryService.deleteCategory(999L,adminContext))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Category not found with id: 999");
         
         verify(categoryRepository).existsById(999L);
+        verify(categoryRepository, never()).deleteById(any());
+    }
+    
+    @Test
+    void deleteCategory_ThrowsForbiddenException() {
+        
+        // When & Then
+        assertThatThrownBy(() -> categoryService.deleteCategory(999L,userContext))
+            .isInstanceOf(ForbiddenException.class)
+            .hasMessageContaining("Permission denied");
+        
+        verify(categoryRepository,never()).existsById(anyLong());
         verify(categoryRepository, never()).deleteById(any());
     }
 }

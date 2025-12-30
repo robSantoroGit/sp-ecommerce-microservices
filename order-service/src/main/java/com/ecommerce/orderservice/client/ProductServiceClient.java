@@ -9,6 +9,7 @@ import org.springframework.web.client.RestClient;
 
 import com.ecommerce.orderservice.dto.ProductDTO;
 import com.ecommerce.orderservice.exception.ExternalServiceException;
+import com.ecommerce.orderservice.exception.ForbiddenException;
 import com.ecommerce.orderservice.exception.InsufficientStockException;
 import com.ecommerce.orderservice.exception.ProductNotFoundException;
 
@@ -37,14 +38,16 @@ public class ProductServiceClient {
      * @throws ProductNotFoundException if product not found
      * @throws ExternalServiceException if service call fails
      */
-    @CircuitBreaker(name = "productService", fallbackMethod = "getProductFallback")
+    @CircuitBreaker( name = "productService", fallbackMethod = "getProductFallback" )
     @Retry(name = "productService")
-    public ProductDTO getProduct(Long productId) {
+    public ProductDTO getProduct(Long productId, Long authenticatedUserId, String scopes) {
         try {
             logger.debug("Calling Product Service to get product: {}", productId);
             
             ProductDTO product = restClient.get()
                     .uri("/api/products/{id}", productId)
+                    .header("X-User-Id", authenticatedUserId.toString())
+                    .header("X-User-Scopes", scopes)
                     .retrieve()
                     .body(ProductDTO.class);
 
@@ -58,7 +61,12 @@ public class ProductServiceClient {
         } catch (HttpClientErrorException.NotFound e) {
             logger.error("Product not found: {}", productId);
             throw new ProductNotFoundException(productId);
-        } catch (Exception e) {
+        } 
+	    catch (HttpClientErrorException.Forbidden e) {
+	        logger.error("Product permission denied for updating stock, with user {} and product {}", authenticatedUserId, productId);
+	        throw e;
+	    }
+        catch (Exception e) {
             logger.error("Error calling Product Service for productId: {}", productId, e);
             throw new ExternalServiceException("Product Service", e);
         }
@@ -72,8 +80,8 @@ public class ProductServiceClient {
      * @throws ProductNotFoundException if product not found
      * @throws InsufficientStockException if insufficient stock
      */
-    public ProductDTO validateProductAndStock(Long productId, Integer requestedQuantity) {
-        ProductDTO product = getProduct(productId);
+    public ProductDTO validateProductAndStock(Long productId, Integer requestedQuantity, Long authenticatedUserId, String scopes) {
+        ProductDTO product = getProduct(productId, authenticatedUserId, scopes);
 
         // Check if product is active
         if (product.getActive() == null || !product.getActive()) {
@@ -94,7 +102,6 @@ public class ProductServiceClient {
      * @param newStock the new stock quantity
      * @throws ExternalServiceException if service call fails
      */
-    @CircuitBreaker(name = "productService", fallbackMethod = "updateProductStockFallback")
     @Retry(name = "productService")
     public void updateProductStock(Long productId, Integer newStock) {
         try {
@@ -102,6 +109,7 @@ public class ProductServiceClient {
             
             restClient.patch()
                     .uri("/api/products/{id}/stock?quantity={quantity}", productId, newStock)
+                    .header("X-Username", "SYSTEM")
                     .retrieve()
                     .toBodilessEntity();
 
@@ -120,7 +128,7 @@ public class ProductServiceClient {
     /**
      * Fallback for getProduct
      */
-    private ProductDTO getProductFallback(Long productId, Throwable throwable) {
+    private ProductDTO getProductFallback(Long productId, Long authenticatedUserId, String scopes, Throwable throwable) {
         logger.error("Product Service unavailable. Using fallback for getProduct: {}. Error: {}", 
                 productId, throwable.getMessage());
         
@@ -132,21 +140,5 @@ public class ProductServiceClient {
         throw new ExternalServiceException("Product Service", 
                 "Product Service is currently unavailable. Please try again later.");
     }
-
-    /**
-     * Fallback for updateProductStock
-     */
-    private void updateProductStockFallback(Long productId, Integer newStock, Throwable throwable) {
-        logger.error("Product Service unavailable. Using fallback for updateProductStock: {}. Error: {}", 
-                productId, throwable.getMessage());
-        
-        // CRITICO: Non possiamo aggiornare lo stock
-        // In produzione potresti:
-        // 1. Salvare l'operazione in una coda per retry asincrono
-        // 2. Registrare in un log di compensazione
-        // 3. Rollback dell'ordine
-        
-        throw new ExternalServiceException("Product Service", 
-                "Product Service is currently unavailable. Cannot update stock. Order will be rolled back.");
-    }
+    
 }

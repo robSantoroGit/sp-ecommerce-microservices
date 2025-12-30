@@ -1,8 +1,11 @@
 package com.ecommerce.productService.controller;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -12,12 +15,14 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.ecommerce.productService.dto.ProductRequestDTO;
 import com.ecommerce.productService.dto.ProductResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
 import com.ecommerce.productService.service.ProductService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,11 +39,16 @@ import jakarta.validation.Valid;
 public class ProductController {
     
     private final ProductService productService;
+    private static final Logger log = LoggerFactory.getLogger(ProductController.class);
     
     public ProductController(ProductService productService) {
         this.productService = productService;
     }
     
+    private SecurityContext createSecurityContext(Long userId, String scopesHeader) {
+	    List<String> scopes = Arrays.asList(scopesHeader.split(","));
+	    return new SecurityContext(userId, "user-" + userId, scopes);
+	}
     
     /**
      * Create a new product
@@ -64,9 +74,12 @@ public class ProductController {
             )
         })
     @PostMapping
-    public ResponseEntity<ProductResponseDTO> createProduct(@Valid @RequestBody ProductRequestDTO dto) {
-        
-        ProductResponseDTO created = productService.createProduct(dto);
+    public ResponseEntity<ProductResponseDTO> createProduct(@Valid @RequestBody ProductRequestDTO dto,
+    		@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+        log.info("POST /api/products - Create product attempt");
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+        ProductResponseDTO created = productService.createProduct(dto,securityContext);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
@@ -87,6 +100,7 @@ public class ProductController {
         })
     @GetMapping
     public ResponseEntity<List<ProductResponseDTO>> getAllProducts() {
+    	log.info("GET /api/products - get all products");
         List<ProductResponseDTO> products = productService.getAllProducts();
         return ResponseEntity.ok(products);
     }
@@ -113,7 +127,8 @@ public class ProductController {
         })
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponseDTO> getProductById(@PathVariable Long id) {
-        ProductResponseDTO product = productService.getProductById(id);
+        log.info("GET /api/products/{} - get product by id",id);
+    	ProductResponseDTO product = productService.getProductById(id);
         return ResponseEntity.ok(product);
     }
     
@@ -142,9 +157,13 @@ public class ProductController {
             )
         })
     @PutMapping("/{id}")
-    public ResponseEntity<ProductResponseDTO> updateProduct(@PathVariable Long id,@Valid @RequestBody ProductRequestDTO dto) {
-        
-        ProductResponseDTO updated = productService.updateProduct(id, dto);
+    public ResponseEntity<ProductResponseDTO> updateProduct(@PathVariable Long id,
+    		@Valid @RequestBody ProductRequestDTO dto,
+    		@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+        log.info("PUT /api/products/{} - update product",id);
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+        ProductResponseDTO updated = productService.updateProduct(id, dto, securityContext);
         return ResponseEntity.ok(updated);
     }
     
@@ -167,8 +186,12 @@ public class ProductController {
             )
         })
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-        productService.deleteProduct(id);
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id,
+    		@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+        log.info("DELETE /api/products/{} - delete product by id",id);
+        SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+    	productService.deleteProduct(id,securityContext);
         return ResponseEntity.noContent().build();
     }
     
@@ -192,7 +215,7 @@ public class ProductController {
         })
     @GetMapping("/category/{categoryId}")
     public ResponseEntity<List<ProductResponseDTO>> getProductsByCategory(@PathVariable Long categoryId) {
-        
+        log.info("GET /api/products/category/{} - Get product by category id", categoryId);
         List<ProductResponseDTO> products = productService.getProductsByCategory(categoryId);
         return ResponseEntity.ok(products);
     }
@@ -213,7 +236,7 @@ public class ProductController {
         })
     @GetMapping("/search")
     public ResponseEntity<List<ProductResponseDTO>> searchProducts(@RequestParam String keyword) {
-        
+        log.info("GET /api/products/search?{} - search products by keyword",keyword);
         List<ProductResponseDTO> products = productService.searchProducts(keyword);
         return ResponseEntity.ok(products);
     }
@@ -234,7 +257,7 @@ public class ProductController {
         })
     @GetMapping("/price-range")
     public ResponseEntity<List<ProductResponseDTO>> getProductsByPriceRange(@RequestParam BigDecimal min,@RequestParam BigDecimal max) {
-        
+        log.info("GET /api/products/price-range?{}&{} - Get products by price range", min, max);
         List<ProductResponseDTO> products = productService.getProductsByPriceRange(min, max);
         return ResponseEntity.ok(products);
     }
@@ -255,6 +278,7 @@ public class ProductController {
         })
     @GetMapping("/active")
     public ResponseEntity<List<ProductResponseDTO>> getActiveProducts() {
+    	log.info("GET /api/products/activ - Get active products");
         List<ProductResponseDTO> products = productService.getActiveProducts();
         return ResponseEntity.ok(products);
     }
@@ -279,9 +303,12 @@ public class ProductController {
             )
         })
     @PatchMapping("/{id}/stock")
-    public ResponseEntity<ProductResponseDTO> updateStock(@PathVariable Long id,@RequestParam Integer quantity) {
-        
-        ProductResponseDTO updated = productService.updateStock(id, quantity);
+    public ResponseEntity<ProductResponseDTO> updateStock(@PathVariable Long id,
+    		@RequestParam Integer quantity,
+    		@RequestHeader("X-Username") String username) {
+        log.info("PATCH /api/products/{}/stock?{} - update product stock",id,quantity);
+        SecurityContext securityContext = new SecurityContext(null, username, null);
+        ProductResponseDTO updated = productService.updateStock(id, quantity, securityContext);
         return ResponseEntity.ok(updated);
     }
     
@@ -305,8 +332,12 @@ public class ProductController {
             )
         })
     @PatchMapping("/{id}/deactivate")
-    public ResponseEntity<ProductResponseDTO> deactivateProduct(@PathVariable Long id) {
-        ProductResponseDTO deactivated = productService.deactivateProduct(id);
+    public ResponseEntity<ProductResponseDTO> deactivateProduct(@PathVariable Long id,
+    		@RequestHeader("X-User-Id") Long authenticatedUserId,
+	        @RequestHeader("X-User-Scopes") String scopesHeader) {
+    	log.info("PATCH /api/products/{}/deactivate - deactivate product",id);
+    	SecurityContext securityContext = createSecurityContext(authenticatedUserId, scopesHeader);
+        ProductResponseDTO deactivated = productService.deactivateProduct(id, securityContext);
         return ResponseEntity.ok(deactivated);
     }
 }

@@ -2,6 +2,7 @@ package com.ecommerce.productService.service;
 
 import com.ecommerce.productService.dto.ProductRequestDTO;
 import com.ecommerce.productService.dto.ProductResponseDTO;
+import com.ecommerce.productService.dto.SecurityContext;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -14,7 +15,7 @@ public interface ProductService {
      * @return Created product
      * @throws ResourceNotFoundException if category not found
      */
-    ProductResponseDTO createProduct(ProductRequestDTO dto);
+    ProductResponseDTO createProduct(ProductRequestDTO dto, SecurityContext securityContext);
     
     /**
      * Get all products
@@ -37,14 +38,14 @@ public interface ProductService {
      * @return Updated product
      * @throws ResourceNotFoundException if product or category not found
      */
-    ProductResponseDTO updateProduct(Long id, ProductRequestDTO dto);
+    ProductResponseDTO updateProduct(Long id, ProductRequestDTO dto, SecurityContext securityContext);
     
     /**
      * Delete product
      * @param id Product ID
      * @throws ResourceNotFoundException if product not found
      */
-    void deleteProduct(Long id);
+    void deleteProduct(Long id, SecurityContext securityContext);
     
     /**
      * Get products by category
@@ -82,7 +83,7 @@ public interface ProductService {
      * @return Updated product
      * @throws ResourceNotFoundException if product not found
      */
-    ProductResponseDTO updateStock(Long id, Integer quantity);
+    ProductResponseDTO updateStock(Long id, Integer quantity, SecurityContext securityContext);
     
     /**
      * Deactivate product (soft delete)
@@ -90,5 +91,5 @@ public interface ProductService {
      * @return Deactivated product
      * @throws ResourceNotFoundException if product not found
      */
-    ProductResponseDTO deactivateProduct(Long id);
+    ProductResponseDTO deactivateProduct(Long id, SecurityContext securityContext);
 }

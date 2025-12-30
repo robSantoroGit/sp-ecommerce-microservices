@@ -81,6 +81,7 @@ springdoc:
   show-actuator: false
 
 # Logging
+# Sostituito per la parte di correlation-id da logback-spring
 logging:
   level:
     com.ecommerce.orderservice: DEBUG
@@ -91,6 +92,12 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n"
 
 # Resilience4j Configuration
+
+  http:
+    client:
+      connect-timeout: 2s
+      read-timeout: 5s
+
 resilience4j:
   circuitbreaker:
     configs:
@@ -123,7 +130,7 @@ resilience4j:
   timeout:
     configs:
       default:
-        timeoutDuration: 5s
+        timeoutDuration: 10s
     instances:
       userService:
         baseConfig: default

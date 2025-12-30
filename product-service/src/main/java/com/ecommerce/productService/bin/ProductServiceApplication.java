@@ -16,7 +16,8 @@ import com.ecommerce.productService.repository.CategoryRepository;
 import com.ecommerce.productService.repository.ProductRepository;
 
 @SpringBootApplication(scanBasePackages = {"com.ecommerce.productService.service","com.ecommerce.productService.controller",
-		"com.ecommerce.productService.dto","com.ecommerce.productService.config","com.ecommerce.productService.exception"})
+		"com.ecommerce.productService.dto","com.ecommerce.productService.config","com.ecommerce.productService.exception",
+		"com.ecommerce.productService.filter"})
 @EnableJpaRepositories(basePackages = "com.ecommerce.productService.repository")
 @EntityScan(basePackages = "com.ecommerce.productService.model")
 public class ProductServiceApplication {
