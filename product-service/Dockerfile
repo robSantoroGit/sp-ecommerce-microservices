@@ -10,7 +10,6 @@ WORKDIR /app
 COPY pom.xml .
 
 # Copia Maven wrapper (se usi ./mvnw)
-COPY .mvn .mvn
 
 # Download dependencies (questo layer viene cachato se pom.xml non cambia)
 RUN mvn dependency:go-offline -B
