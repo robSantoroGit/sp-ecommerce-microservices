@@ -24,11 +24,11 @@ jobs:
     
     - name: Run tests
       working-directory: ./user-service
-      run: ./mvnw test
+      run: mvn test
       
     - name: Build JAR
       working-directory: ./user-service
-      run: ./mvnw package -DskipTests
+      run: mvn package -DskipTests
       
     - name: Upload coverage report
       if: always()
