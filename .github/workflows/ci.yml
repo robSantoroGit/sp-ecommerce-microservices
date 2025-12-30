@@ -56,6 +56,16 @@ jobs:
       working-directory: ./user-service
       run: mvn test
       
+    - name: SonarCloud Scan
+      working-directory: ./user-service
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        mvn sonar:sonar \
+          -Dsonar.projectKey=robsantorogit_user-service \
+          -Dsonar.organization=robsantorogit \
+          -Dsonar.host.url=https://sonarcloud.io  
+      
     - name: Build JAR
       working-directory: ./user-service
       run: mvn package -DskipTests
