@@ -467,7 +467,9 @@ class ProductServiceIntegrationTest {
         Long productId = productResponse.getBody().getId();
         
         // 2. Update stock
-        HttpEntity<Void> productUpdateRequest = new HttpEntity<Void>(productHeaders);
+        HttpHeaders patchHeaders = new HttpHeaders();
+        patchHeaders.set("X-Username", "SYSTEM");
+        HttpEntity<Void> productUpdateRequest = new HttpEntity<Void>(patchHeaders);
         ResponseEntity<ProductResponseDTO> stockUpdateResponse = restTemplate.exchange(
             "/api/products/" + productId + "/stock?quantity=25",
             HttpMethod.PATCH,

@@ -461,8 +461,7 @@ class ProductControllerTest {
         
         // When & Then
         mockMvc.perform(patch("/api/products/1/stock?quantity=25")
-        		.header("X-User-Id", "999")
-                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
+        		.header("X-Username", "SYSTEM"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id", is(1)))
             .andExpect(jsonPath("$.stock", is(25)));
@@ -478,8 +477,7 @@ class ProductControllerTest {
         
         // When & Then
         mockMvc.perform(patch("/api/products/999/stock?quantity=25")
-        		.header("X-User-Id", "999")
-                .header("X-User-Scopes", Permission.PRODUCT_WRITE))
+        		.header("X-Username", "SYSTEM"))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)));
         

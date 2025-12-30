@@ -46,6 +46,7 @@ class ProductServiceTest {
     
     private SecurityContext adminContext;
     private SecurityContext userContext;
+    private SecurityContext systemContext;
     
     @BeforeEach
     void setUp() {
@@ -56,6 +57,7 @@ class ProductServiceTest {
         ));
         
         userContext = new SecurityContext(1L, "user", List.of());
+        systemContext = new SecurityContext(100L, "SYSTEM", List.of());
     }
     
     @Test
@@ -522,7 +524,7 @@ class ProductServiceTest {
         when(productMapper.toResponseDTO(updatedProduct)).thenReturn(responseDTO);
         
         // When
-        ProductResponseDTO result = productService.updateStock(1L, 25, adminContext);
+        ProductResponseDTO result = productService.updateStock(1L, 25, systemContext);
         
         // Then
         assertThat(result).isNotNull();
@@ -536,14 +538,14 @@ class ProductServiceTest {
     @Test
     void updateStock_ThrowsNotFoundException() {
         // Given
-        when(productRepository.findById(999L)).thenReturn(Optional.empty());
+        when(productRepository.findById(100L)).thenReturn(Optional.empty());
         
         // When & Then
-        assertThatThrownBy(() -> productService.updateStock(999L, 25, adminContext))
+        assertThatThrownBy(() -> productService.updateStock(100L, 25, systemContext))
             .isInstanceOf(ResourceNotFoundException.class)
-            .hasMessageContaining("Product not found with id: 999");
+            .hasMessageContaining("Product not found with id: 100");
         
-        verify(productRepository).findById(999L);
+        verify(productRepository).findById(100L);
         verify(productRepository, never()).save(any());
     }
     
