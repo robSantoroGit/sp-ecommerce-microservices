@@ -322,10 +322,12 @@ jobs:
         echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Services Tested:" >> $GITHUB_STEP_SUMMARY
-        echo "- User Service: ${{ needs.detect-changes.outputs.user == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- Product Service: ${{ needs.detect-changes.outputs.product == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- Order Service: ${{ needs.detect-changes.outputs.order == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- API Gateway: ${{ needs.detect-changes.outputs.gateway == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- User Service: ${{ needs.detect-changes.outputs.user == 'true' && '✅ Tested + SonarCloud' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Product Service: ${{ needs.detect-changes.outputs.product == 'true' && '✅ Tested + SonarCloud' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Order Service: ${{ needs.detect-changes.outputs.order == 'true' && '✅ Tested + SonarCloud' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- API Gateway: ${{ needs.detect-changes.outputs.gateway == 'true' && '✅ Tested + SonarCloud' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📊 View SonarCloud: https://sonarcloud.io/organizations/robsantorogit/projects" >> $GITHUB_STEP_SUMMARY

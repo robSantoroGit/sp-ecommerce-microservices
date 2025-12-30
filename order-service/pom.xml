@@ -155,7 +155,7 @@
 		      <artifactId>sonar-maven-plugin</artifactId>
 		      <version>4.0.0.4121</version>
 		    </plugin>
-		    <!-- Jacoco test coverage -->
+		    <!-- Jacoco test coverage --> 
 			<plugin>
 		      <groupId>org.jacoco</groupId>
 		      <artifactId>jacoco-maven-plugin</artifactId>
