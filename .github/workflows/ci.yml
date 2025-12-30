@@ -7,9 +7,39 @@ on:
     branches: [ main ]
 
 jobs:
+
+  # Detect which services changed
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      user: ${{ steps.filter.outputs.user }}
+      product: ${{ steps.filter.outputs.product }}
+      order: ${{ steps.filter.outputs.order }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check path filters
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            user:
+              - 'user-service/**'
+            product:
+              - 'product-service/**'
+            order:
+              - 'order-service/**'
+            gateway:
+              - 'api-gateway/**'
+
   test-user-service:
     name: Test User Service
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.user == 'true'
     
     steps:
     - name: Checkout code
@@ -41,6 +71,8 @@ jobs:
   test-product-service:
     name: Test Product Service
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.product == 'true'
     
     steps:
     - name: Checkout code
@@ -72,6 +104,8 @@ jobs:
   test-order-service:
     name: Test Order Service
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.order == 'true'
     
     steps:
     - name: Checkout code
@@ -103,6 +137,8 @@ jobs:
   test-api-gateway:
     name: Test API Gateway
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.gateway == 'true'
     
     steps:
     - name: Checkout code
@@ -123,11 +159,14 @@ jobs:
       working-directory: ./api-gateway
       run: mvn package -DskipTests
     
-  build-docker-images:
-    name: Build Docker Images (Validation Only)
+  # Build Docker images - only for changed services
+  build-docker-user-service:
+    name: Build User Service Docker Image
     runs-on: ubuntu-latest
-    needs: [test-user-service, test-product-service, test-order-service, test-api-gateway]
-    if: github.event_name == 'push'
+    needs: [detect-changes, test-user-service]
+    if: |
+      github.event_name == 'push' && 
+      needs.detect-changes.outputs.user == 'true'
     
     steps:
     - name: Checkout code
@@ -150,6 +189,28 @@ jobs:
         docker build -t user-service:${{ github.sha }} .
         docker tag user-service:${{ github.sha }} user-service:latest
         echo "✅ User Service image built successfully"
+
+  build-docker-product-service:
+    name: Build Product Service Docker Image
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-product-service]
+    if: |
+      github.event_name == 'push' && 
+      needs.detect-changes.outputs.product == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
     
     - name: Build Product Service Image
       working-directory: ./product-service
@@ -158,6 +219,28 @@ jobs:
         docker build -t product-service:${{ github.sha }} .
         docker tag product-service:${{ github.sha }} product-service:latest
         echo "✅ Product Service image built successfully"
+
+  build-docker-order-service:
+    name: Build Order Service Docker Image
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-order-service]
+    if: |
+      github.event_name == 'push' && 
+      needs.detect-changes.outputs.order == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
     
     - name: Build Order Service Image
       working-directory: ./order-service
@@ -166,6 +249,28 @@ jobs:
         docker build -t order-service:${{ github.sha }} .
         docker tag order-service:${{ github.sha }} order-service:latest
         echo "✅ Order Service image built successfully"
+
+  build-docker-api-gateway:
+    name: Build API Gateway Docker Image
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-api-gateway]
+    if: |
+      github.event_name == 'push' && 
+      needs.detect-changes.outputs.gateway == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
     
     - name: Build API Gateway Image
       working-directory: ./api-gateway
@@ -174,30 +279,23 @@ jobs:
         docker build -t api-gateway:${{ github.sha }} .
         docker tag api-gateway:${{ github.sha }} api-gateway:latest
         echo "✅ API Gateway image built successfully"
-    
-    - name: Verify images
-      run: |
-        echo "## Docker Images Built" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        docker images | grep -E "(user-service|product-service|order-service|api-gateway)" >> $GITHUB_STEP_SUMMARY || true
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "ℹ️ Images built for validation only (not uploaded to save storage)" >> $GITHUB_STEP_SUMMARY
 
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [test-user-service, test-product-service, test-order-service, test-api-gateway, build-docker-images]
+    needs: [detect-changes, test-user-service, test-product-service, test-order-service, test-api-gateway]
     if: always()
     
     steps:
-    - name: Check test results
+    - name: Generate summary
       run: |
         echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Docker images built and validated" >> $GITHUB_STEP_SUMMARY
+        echo "### Services Tested:" >> $GITHUB_STEP_SUMMARY
+        echo "- User Service: ${{ needs.detect-changes.outputs.user == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Product Service: ${{ needs.detect-changes.outputs.product == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Order Service: ${{ needs.detect-changes.outputs.order == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- API Gateway: ${{ needs.detect-changes.outputs.gateway == 'true' && '✅ Tested' || '⏭️ Skipped' }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "📦 Coverage reports available in Artifacts" >> $GITHUB_STEP_SUMMARY
