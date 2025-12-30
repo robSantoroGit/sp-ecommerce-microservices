@@ -141,6 +141,16 @@ jobs:
     - name: Run tests
       working-directory: ./order-service
       run: mvn test
+    
+    - name: SonarCloud Scan
+      working-directory: ./product-service
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        mvn sonar:sonar \
+          -Dsonar.projectKey=robsantorogit_order-service \
+          -Dsonar.organization=robsantorogit \
+          -Dsonar.host.url=https://sonarcloud.io     
       
     - name: Build JAR
       working-directory: ./order-service
