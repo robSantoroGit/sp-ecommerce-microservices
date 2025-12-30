@@ -33,6 +33,16 @@
 		  <sonar.coverage.jacoco.xmlReportPaths>
 		    ${project.build.directory}/site/jacoco/jacoco.xml
 		  </sonar.coverage.jacoco.xmlReportPaths>
+		  <sonar.coverage.exclusions>
+		    **/bin/**,
+		    **/config/**,
+		    **/dto/**,
+		    **/exception/**,
+		    **/filter/**,
+		    **/model/**,
+		    **/security/**,
+		    **/util/**
+		  </sonar.coverage.exclusions>
 	</properties>
 	<dependencies>
 		<dependency>
