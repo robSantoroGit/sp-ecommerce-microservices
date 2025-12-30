@@ -9,7 +9,7 @@ WORKDIR /app
 # Copia solo pom.xml prima per cache layer Maven dependencies
 COPY pom.xml .
 
-# Copia Maven wrapper (se usi ./mvnw) 
+# Copia Maven wrapper (se usi ./mvnw)
 
 # Download dependencies (questo layer viene cachato se pom.xml non cambia)
 RUN mvn dependency:go-offline -B
