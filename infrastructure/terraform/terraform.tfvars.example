@@ -1,0 +1,11 @@
+# terraform.tfvars.example
+# Copia questo file in terraform.tfvars e personalizza
+
+aws_region    = "eu-south-1"
+environment   = "dev"
+project_name  = "ecommerce"
+instance_type = "t3.small"
+
+# Il tuo IP pubblico (ottieni con: curl ifconfig.me)
+# Formato: x.x.x.x/32
+my_ip = "1.2.3.4/32"  # SOSTITUISCI CON IL TUO IP!
