@@ -182,7 +182,7 @@ jobs:
           echo "Testing user registration endpoint..."
           curl -X POST http://35.152.222.113:30080/api/auth/register \
             -H "Content-Type: application/json" \
-            -d '{"username":"ci-test-user","email":"test@ci.com","password":"Test123!","role":"USER"}' \
+            -d '{"username":"ci-test-user","email":"test@ci.com","password":"Test123!","role":"CUSTOMER"}' \
             || echo "⚠️ Registration test failed (might be expected if user exists)"
       
       - name: Deployment Summary
