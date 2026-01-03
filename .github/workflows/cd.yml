@@ -1,0 +1,196 @@
+name: CD Pipeline - Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: 196390795673.dkr.ecr.eu-south-1.amazonaws.com
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      user: ${{ steps.filter.outputs.user }}
+      product: ${{ steps.filter.outputs.product }}
+      order: ${{ steps.filter.outputs.order }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            user:
+              - 'user-service/**'
+            product:
+              - 'product-service/**'
+            order:
+              - 'order-service/**'
+            gateway:
+              - 'api-gateway/**'
+
+  deploy-user-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.user == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Build JAR
+        run: |
+          cd user-service
+          mvn clean package -DskipTests
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build, tag, and push image to ECR
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd user-service
+          docker build -t $ECR_REGISTRY/ecommerce/user-service:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/ecommerce/user-service:$IMAGE_TAG $ECR_REGISTRY/ecommerce/user-service:latest
+          docker push $ECR_REGISTRY/ecommerce/user-service:$IMAGE_TAG
+          docker push $ECR_REGISTRY/ecommerce/user-service:latest
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      
+      - name: Update Kubernetes deployment
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          kubectl set image deployment/user-service \
+            user-service=$ECR_REGISTRY/ecommerce/user-service:$IMAGE_TAG \
+            --record
+          
+          kubectl rollout status deployment/user-service --timeout=5m
+      
+      - name: Verify deployment
+        run: |
+          kubectl get pods -l app=user-service
+          kubectl logs -l app=user-service --tail=50
+
+  deploy-api-gateway:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.gateway == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Build JAR
+        run: |
+          cd api-gateway
+          mvn clean package -DskipTests
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build, tag, and push image to ECR
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd api-gateway
+          docker build -t $ECR_REGISTRY/ecommerce/api-gateway:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/ecommerce/api-gateway:$IMAGE_TAG $ECR_REGISTRY/ecommerce/api-gateway:latest
+          docker push $ECR_REGISTRY/ecommerce/api-gateway:$IMAGE_TAG
+          docker push $ECR_REGISTRY/ecommerce/api-gateway:latest
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+      
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      
+      - name: Update Kubernetes deployment
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          kubectl set image deployment/api-gateway \
+            api-gateway=$ECR_REGISTRY/ecommerce/api-gateway:$IMAGE_TAG \
+            --record
+          
+          kubectl rollout status deployment/api-gateway --timeout=5m
+      
+      - name: Verify deployment
+        run: |
+          kubectl get pods -l app=api-gateway
+          kubectl logs -l app=api-gateway --tail=50
+
+  smoke-tests:
+    needs: [deploy-user-service, deploy-api-gateway]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+      
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+      
+      - name: Get API Gateway URL
+        id: get-url
+        run: |
+          # Assuming EC2 IP is static or retrievable
+          API_URL="http://35.152.222.113:30080"
+          echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+      
+      - name: Health Check API Gateway
+        run: |
+          curl -f ${{ steps.get-url.outputs.API_URL }}/actuator/health || exit 1
+      
+      - name: Check All Pods Running
+        run: |
+          kubectl get pods
+          # Check no pods in Error/CrashLoopBackOff
+          if kubectl get pods | grep -E 'Error|CrashLoopBackOff'; then
+            echo "Some pods are failing!"
+            exit 1
+          fi
