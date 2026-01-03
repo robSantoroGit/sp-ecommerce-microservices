@@ -167,6 +167,34 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Debug Network
+        run: |
+          echo "=== Testing connectivity ==="
+          ping -c 3 35.152.222.113 || echo "Ping failed"
+          
+          echo "=== Testing K3s API port ==="
+          nc -zv 35.152.222.113 6443 || echo "Port 6443 not reachable"
+          
+          echo "=== Testing with curl ==="
+          curl -k -v --connect-timeout 10 https://35.152.222.113:6443/version || echo "Curl failed"
+
+      - name: Debug Kubeconfig
+        run: |
+          echo "=== Kubeconfig server ==="
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d | grep "server:"
+          
+          echo "=== Test kubectl connectivity ==="
+          kubectl cluster-info --request-timeout=10s || echo "kubectl failed"
+
+      - name: Show GitHub Runner IP
+        run: |
+          echo "=== GitHub Actions Public IP ==="
+          curl -s https://api.ipify.org
+          echo ""
+          
+          echo "=== Testing from this IP to K3s ==="
+          curl -k --connect-timeout 10 https://35.152.222.113:6443/version
+
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
       
